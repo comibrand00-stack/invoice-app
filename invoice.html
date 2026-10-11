@@ -49,22 +49,6 @@
   .toolbar button:hover{ background:#0b5ed7; }
   .toolbar button.ghost{ background:#6c757d; }
   .toolbar button svg{ width:20px; height:20px; display:block; }
-  .toolbar-badge{
-    position:absolute;
-    inset-inline-start:14px;
-    top:50%;
-    transform:translateY(-50%);
-    display:flex;
-    align-items:center;
-    gap:7px;
-    color:#cbd5e1;
-    font-size:12px;
-    font-weight:600;
-    letter-spacing:.5px;
-    white-space:nowrap;
-  }
-  .toolbar-badge svg{ width:24px; height:24px; display:block; }
-  @media (max-width:560px){ .toolbar-badge span{ display:none; } }
 
   .fab{
     position:fixed;
@@ -386,8 +370,6 @@
   .login-box input{ width:100%; height:42px; border:1px solid #ccc; border-radius:8px; padding:0 12px; margin-bottom:10px; font-size:14px; font-family:inherit; direction:ltr; text-align:left; }
   .login-box .btn{ width:100%; height:42px; }
   .login-err{ color:#d00; font-size:13px; margin-top:10px; min-height:18px; }
-  .login-badge{ display:inline-block; background:#eef4ff; color:#0d6efd; border:1px solid #cfe0ff;
-    border-radius:999px; padding:3px 12px; font-size:12px; font-weight:600; margin-bottom:14px; }
 </style>
 </head>
 <body>
@@ -411,9 +393,8 @@
       <circle cx="44.5" cy="45.5" r="9.5" fill="#16a34a"/>
       <path d="M40.3 45.7l2.9 2.9 5.4-5.8" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <div class="login-badge">استخدام خاص</div>
     <h1>برنامج الفاتورة</h1>
-    <p>تسجيل الدخول إلزامي للمتابعة</p>
+    <p>سجّل الدخول للمتابعة</p>
     <input type="email" id="loginEmail" placeholder="البريد الإلكتروني" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
     <input type="password" id="loginPass" placeholder="كلمة المرور" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn" id="loginBtn" onclick="doLogin()">دخول</button>
@@ -422,20 +403,6 @@
 </div>
 
 <div class="toolbar">
-  <div class="toolbar-badge" title="استخدام خاص">
-    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="tb" x1="9" y1="5" x2="55" y2="59" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#0d6efd"/><stop offset="0.55" stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/>
-        </linearGradient>
-      </defs>
-      <rect x="3" y="3" width="58" height="58" rx="16" fill="url(#tb)"/>
-      <rect x="17" y="12" width="24" height="32" rx="4.5" fill="#fff"/>
-      <circle cx="44.5" cy="45.5" r="9.5" fill="#16a34a"/>
-      <path d="M40.3 45.7l2.9 2.9 5.4-5.8" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <span>استخدام خاص</span>
-  </div>
   <button title="طباعة / PDF" aria-label="طباعة / PDF" onclick="printCurrent()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
   </button>
@@ -1719,11 +1686,7 @@
     location.reload();
   }
   (async function(){
-    if(!SB_READY){
-      document.getElementById('loginScreen').classList.add('open');
-      document.getElementById('loginErr').textContent = 'تعذّر الاتصال بالخادم — الدخول إلزامي';
-      return;
-    }
+    if(!SB_READY){ startApp(); return; }
     try{
       const { data } = await sb.auth.getSession();
       if(data && data.session){ startApp(); return; }
