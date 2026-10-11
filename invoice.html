@@ -558,12 +558,69 @@
 
 <div id="printArea"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   const ROWS = 34;
   const ITEMS_KEY = 'invoice_items_v1';
   const HISTORY_KEY = 'invoice_history_v1';
   const CUSTOMERS_KEY = 'invoice_customers_v1';
   let currentId = null;
+
+  /* ============ Backend (Supabase) ============ */
+  const SB_URL = 'https://ieiiawsjgkrsbblgjvcu.supabase.co';
+  const SB_KEY = 'sb_publishable_JlgVW2kGa3wiS6C0PApt1A__clrP5sL';
+  const SB_TABLE = 'invoice_store';
+  let sb = null, SB_READY = false;
+  try{
+    if(window.supabase && SB_URL && SB_KEY){
+      sb = window.supabase.createClient(SB_URL, SB_KEY);
+      SB_READY = true;
+    }
+  }catch(e){ SB_READY = false; }
+
+  let itemsCache = [], customersCache = [], historyCache = [];
+
+  function readLS(key, fallback){
+    try{ const v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; }
+    catch(e){ return fallback; }
+  }
+  function writeLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+  const sbTimers = {};
+  function sbSave(key, value){
+    writeLS(key, value);
+    if(!SB_READY) return;
+    clearTimeout(sbTimers[key]);
+    sbTimers[key] = setTimeout(async () => {
+      try{
+        const { error } = await sb.from(SB_TABLE).upsert(
+          { key: key, value: value, updated_at: new Date().toISOString() },
+          { onConflict: 'key' }
+        );
+        if(error) console.error('Supabase save error:', error.message);
+      }catch(e){ console.error(e); }
+    }, 300);
+  }
+  async function sbLoad(){
+    try{
+      const keys = [ITEMS_KEY, CUSTOMERS_KEY, HISTORY_KEY];
+      const { data, error } = await sb.from(SB_TABLE).select('key,value').in('key', keys);
+      if(error) throw error;
+      const map = {};
+      (data || []).forEach(r => { map[r.key] = r.value; });
+      itemsCache     = map[ITEMS_KEY]     != null ? map[ITEMS_KEY]     : readLS(ITEMS_KEY, []);
+      customersCache = map[CUSTOMERS_KEY] != null ? map[CUSTOMERS_KEY] : readLS(CUSTOMERS_KEY, []);
+      historyCache   = map[HISTORY_KEY]   != null ? map[HISTORY_KEY]   : readLS(HISTORY_KEY, []);
+      if(map[ITEMS_KEY] == null && itemsCache.length) sbSave(ITEMS_KEY, itemsCache);
+      if(map[CUSTOMERS_KEY] == null && customersCache.length) sbSave(CUSTOMERS_KEY, customersCache);
+      if(map[HISTORY_KEY] == null && historyCache.length) sbSave(HISTORY_KEY, historyCache);
+    }catch(e){
+      console.error('Supabase load failed, using local data:', e.message || e);
+      itemsCache     = readLS(ITEMS_KEY, []);
+      customersCache = readLS(CUSTOMERS_KEY, []);
+      historyCache   = readLS(HISTORY_KEY, []);
+    }
+  }
 
   const ICON = {
     add:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
@@ -765,9 +822,7 @@
   }
 
   function loadItems(){
-    let raw;
-    try{ raw = JSON.parse(localStorage.getItem(ITEMS_KEY)) || []; }
-    catch(e){ return []; }
+    const raw = itemsCache || [];
     let changed = false;
     const list = raw.map(it => {
       if(Array.isArray(it.units)){
@@ -779,9 +834,7 @@
     if(changed) persistItems(list);
     return list;
   }
-  function persistItems(list){
-    try{ localStorage.setItem(ITEMS_KEY, JSON.stringify(list)); }catch(e){}
-  }
+  function persistItems(list){ itemsCache = list; sbSave(ITEMS_KEY, list); }
   function findUnitPrice(name, unit){
     const it = loadItems().find(x => x.name === name);
     if(!it) return null;
@@ -818,13 +871,8 @@
   }
 
   /* ============ Customers list ============ */
-  function loadCustomers(){
-    try{ return JSON.parse(localStorage.getItem(CUSTOMERS_KEY)) || []; }
-    catch(e){ return []; }
-  }
-  function saveCustomers(l){
-    try{ localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(l)); }catch(e){}
-  }
+  function loadCustomers(){ return customersCache || []; }
+  function saveCustomers(l){ customersCache = l; sbSave(CUSTOMERS_KEY, l); }
   function addCustomer(name){
     name = (name || '').trim();
     if(!name) return;
@@ -966,13 +1014,8 @@
   /* ============ Invoice history ============ */
   let histList = [];
 
-  function loadHistory(){
-    try{ return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
-    catch(e){ return []; }
-  }
-  function persistHistory(l){
-    try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(l)); }catch(e){}
-  }
+  function loadHistory(){ return historyCache || []; }
+  function persistHistory(l){ historyCache = l; sbSave(HISTORY_KEY, l); }
   function invoiceTotal(inv){
     return (inv.items || []).reduce((s, it) =>
       s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0);
@@ -1558,12 +1601,22 @@
     if(isSuggestField(e.target)) suggestionsFor(e.target);
   });
 
-  buildFirstPage();
-  initDate();
-  setNewInvoiceNo();
-  syncPageHeaders();
-  renumberAll();
-  recalcAll();
+  async function boot(){
+    if(SB_READY){
+      await sbLoad();
+    } else {
+      itemsCache     = readLS(ITEMS_KEY, []);
+      customersCache = readLS(CUSTOMERS_KEY, []);
+      historyCache   = readLS(HISTORY_KEY, []);
+    }
+    buildFirstPage();
+    initDate();
+    setNewInvoiceNo();
+    syncPageHeaders();
+    renumberAll();
+    recalcAll();
+  }
+  boot();
 </script>
 </body>
 </html>
