@@ -627,14 +627,27 @@
   }
   function writeLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 
+  function sbError(msg){
+    console.error(msg);
+    let el = document.getElementById('sbErr');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'sbErr';
+      el.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:9999;background:#b00020;color:#fff;padding:10px 14px;border-radius:8px;font:13px Tahoma,Arial;max-width:70vw;box-shadow:0 4px 14px rgba(0,0,0,.3)';
+      document.body.appendChild(el);
+    }
+    el.textContent = 'خطأ في المزامنة: ' + msg;
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.remove(), 10000);
+  }
   // Per-row writes => concurrent devices never overwrite each other's data.
   function rowUpsert(table, row){
     if(!SB_READY) return;
-    sb.from(table).upsert(row).then(({ error }) => { if(error) console.error(table + ' upsert:', error.message); });
+    sb.from(table).upsert(row).then(({ error }) => { if(error) sbError(table + ' ← ' + error.message); });
   }
   function rowDelete(table, col, val){
     if(!SB_READY) return;
-    sb.from(table).delete().eq(col, val).then(({ error }) => { if(error) console.error(table + ' delete:', error.message); });
+    sb.from(table).delete().eq(col, val).then(({ error }) => { if(error) sbError(table + ' ← ' + error.message); });
   }
   function invoiceRow(v){
     return {
@@ -642,6 +655,47 @@
       total: (v.items || []).reduce((s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0),
       items: v.items || [], saved_at: v.savedAt || 0
     };
+  }
+  async function sbRefresh(){
+    if(!SB_READY) return;
+    try{
+      const [ri, rc, rv] = await Promise.all([
+        sb.from('items').select('name,units'),
+        sb.from('customers').select('name'),
+        sb.from('invoices').select('id,no,date,customer,items,saved_at')
+      ]);
+      if(ri.error) throw ri.error;
+      if(rc.error) throw rc.error;
+      if(rv.error) throw rv.error;
+      itemsCache     = (ri.data || []).map(r => ({ name:r.name, units:r.units || [] }));
+      customersCache = (rc.data || []).map(r => r.name);
+      historyCache   = (rv.data || []).map(r => ({ id:r.id, no:r.no, date:r.date, customer:r.customer, items:r.items || [], savedAt:r.saved_at || 0 }));
+      writeLS(ITEMS_KEY, itemsCache);
+      writeLS(CUSTOMERS_KEY, customersCache);
+      writeLS(HISTORY_KEY, historyCache);
+      renderItems(); renderCustomers(); renderHistory();
+    }catch(e){ sbError('تحديث ← ' + (e.message || e)); }
+  }
+  let refreshTimer = null;
+  function scheduleRefresh(){
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(sbRefresh, 400);
+  }
+  let sbChannel = null;
+  function sbSubscribe(){
+    if(!SB_READY || sbChannel) return;
+    try{
+      sbChannel = sb.channel('shared-sync')
+        .on('postgres_changes', { event:'*', schema:'public', table:'items' }, scheduleRefresh)
+        .on('postgres_changes', { event:'*', schema:'public', table:'customers' }, scheduleRefresh)
+        .on('postgres_changes', { event:'*', schema:'public', table:'invoices' }, scheduleRefresh)
+        .subscribe();
+    }catch(e){ console.error('realtime subscribe failed:', e); }
+  }
+  function sbStartAutoRefresh(){
+    sbSubscribe();
+    setInterval(() => { if(document.visibilityState === 'visible') sbRefresh(); }, 20000);
+    window.addEventListener('focus', sbRefresh);
   }
   async function sbLoad(){
     try{
@@ -676,7 +730,7 @@
       writeLS(CUSTOMERS_KEY, customersCache);
       writeLS(HISTORY_KEY, historyCache);
     }catch(e){
-      console.error('Supabase load failed, using local data:', e.message || e);
+      sbError('تحميل ← ' + (e.message || e));
       itemsCache     = readLS(ITEMS_KEY, []);
       customersCache = readLS(CUSTOMERS_KEY, []);
       historyCache   = readLS(HISTORY_KEY, []);
@@ -1686,6 +1740,7 @@
     document.getElementById('loginScreen').classList.remove('open');
     if(SB_READY){
       await sbLoad();
+      sbStartAutoRefresh();
     } else {
       itemsCache     = readLS(ITEMS_KEY, []);
       customersCache = readLS(CUSTOMERS_KEY, []);
