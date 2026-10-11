@@ -360,9 +360,28 @@
       break-after:auto;
     }
   }
+  .login{ position:fixed; inset:0; background:#eef1f5; display:none; align-items:center; justify-content:center; z-index:1000; }
+  .login.open{ display:flex; }
+  .login-box{ background:#fff; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,.15); padding:28px 26px; width:min(360px,90vw); text-align:center; }
+  .login-box h1{ margin:0 0 4px; font-size:22px; }
+  .login-box p{ margin:0 0 18px; color:#777; font-size:13px; }
+  .login-box input{ width:100%; height:42px; border:1px solid #ccc; border-radius:8px; padding:0 12px; margin-bottom:10px; font-size:14px; font-family:inherit; direction:ltr; text-align:left; }
+  .login-box .btn{ width:100%; height:42px; }
+  .login-err{ color:#d00; font-size:13px; margin-top:10px; min-height:18px; }
 </style>
 </head>
 <body>
+
+<div class="login open" id="loginScreen">
+  <div class="login-box">
+    <h1>برنامج الفاتورة</h1>
+    <p>سجّل الدخول للمتابعة</p>
+    <input type="email" id="loginEmail" placeholder="البريد الإلكتروني" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
+    <input type="password" id="loginPass" placeholder="كلمة المرور" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn" id="loginBtn" onclick="doLogin()">دخول</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
 
 <div class="toolbar">
   <button title="طباعة / PDF" aria-label="طباعة / PDF" onclick="printCurrent()">
@@ -382,6 +401,9 @@
   </button>
   <button class="ghost" title="تفريغ" aria-label="تفريغ" onclick="resetForm()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+  </button>
+  <button class="ghost" title="خروج" aria-label="خروج" onclick="doLogout()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
   </button>
 </div>
 
@@ -1601,7 +1623,11 @@
     if(isSuggestField(e.target)) suggestionsFor(e.target);
   });
 
-  async function boot(){
+  let appStarted = false;
+  async function startApp(){
+    if(appStarted) return;
+    appStarted = true;
+    document.getElementById('loginScreen').classList.remove('open');
     if(SB_READY){
       await sbLoad();
     } else {
@@ -1616,7 +1642,39 @@
     renumberAll();
     recalcAll();
   }
-  boot();
+  async function doLogin(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const pass  = document.getElementById('loginPass').value;
+    const err   = document.getElementById('loginErr');
+    const btn   = document.getElementById('loginBtn');
+    err.textContent = '';
+    if(!SB_READY){ err.textContent = 'تعذّر الاتصال بالخادم'; return; }
+    if(!email || !pass){ err.textContent = 'أدخل البريد وكلمة المرور'; return; }
+    btn.disabled = true; btn.textContent = 'جارٍ الدخول...';
+    try{
+      const { error } = await sb.auth.signInWithPassword({ email:email, password:pass });
+      if(error) throw error;
+      await startApp();
+    }catch(e){
+      console.error(e);
+      err.textContent = 'بيانات الدخول غير صحيحة';
+    }finally{
+      btn.disabled = false; btn.textContent = 'دخول';
+    }
+  }
+  async function doLogout(){
+    try{ if(SB_READY) await sb.auth.signOut(); }catch(e){}
+    location.reload();
+  }
+  (async function(){
+    if(!SB_READY){ startApp(); return; }
+    try{
+      const { data } = await sb.auth.getSession();
+      if(data && data.session){ startApp(); return; }
+    }catch(e){ console.error(e); }
+    document.getElementById('loginScreen').classList.add('open');
+    setTimeout(() => { const el = document.getElementById('loginEmail'); if(el) el.focus(); }, 150);
+  })();
 </script>
 </body>
 </html>
