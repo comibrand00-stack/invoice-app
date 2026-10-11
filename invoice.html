@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>عرض سعر / فاتورة</title>
+<style>
+  :root{
+    --line:#000;
+    --pad:6px;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0;
+    padding:0;
+    font-family:"Tahoma","Segoe UI","Arial",sans-serif;
+    color:#000;
+    background:#e9e9e9;
+  }
+  .toolbar{
+    position:sticky;
+    top:0;
+    display:flex;
+    gap:8px;
+    justify-content:center;
+    padding:10px;
+    background:#2b2b2b;
+    z-index:10;
+  }
+  .toolbar button{
+    font-family:inherit;
+    font-size:18px;
+    line-height:1;
+    width:44px;
+    height:44px;
+    padding:0;
+    border:0;
+    border-radius:50%;
+    background:#0d6efd;
+    color:#fff;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    transition:transform .1s, background .15s;
+  }
+  .toolbar button:hover{ transform:translateY(-1px); }
+  .toolbar button:hover{ background:#0b5ed7; }
+  .toolbar button.ghost{ background:#6c757d; }
+  .toolbar button svg{ width:20px; height:20px; display:block; }
+
+  .fab{
+    position:fixed;
+    left:20px;
+    bottom:20px;
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    border:0;
+    background:#0d6efd;
+    color:#fff;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:0 8px 22px rgba(13,110,253,.5);
+    z-index:30;
+    transition:transform .12s, background .15s;
+  }
+  .fab:hover{ background:#0b5ed7; transform:translateY(-2px); }
+  .fab svg{ width:26px; height:26px; display:block; }
+
+  .sheet{
+    position:relative;
+    width:210mm;
+    min-height:297mm;
+    margin:16px auto;
+    padding:10mm 8mm;
+    background:#fff;
+    box-shadow:0 0 8px rgba(0,0,0,.3);
+  }
+  .page-del{
+    position:absolute;
+    top:8px;
+    left:8px;
+    z-index:5;
+  }
+  .page-head .ph-no,
+  .page-head .ph-date,
+  .page-head .ph-cust{
+    flex:1;
+    font-weight:bold;
+    text-align:right;
+  }
+
+  /* ===== Header ===== */
+  .doc-head{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    border:1px solid #333;
+    border-radius:6px;
+    overflow:hidden;
+    margin-bottom:10px;
+    background:#fff;
+  }
+  .doc-head .cell{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 12px;
+    min-height:42px;
+    font-size:14px;
+    border-left:1px solid #333;
+  }
+  .doc-head .cell.no-left{ border-left:0; }
+  .doc-head .cell.full{
+    grid-column:1 / -1;
+    border-top:1px solid #333;
+    border-left:0;
+  }
+  .doc-head .lbl{
+    flex:0 0 auto;
+    min-width:72px;
+    text-align:center;
+    font-weight:bold;
+    white-space:nowrap;
+    color:#333;
+  }
+  .doc-head .fixed{
+    flex:1;
+    text-align:center;
+    font-weight:bold;
+    color:#0b5ed7;
+  }
+
+  /* ===== Table ===== */
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13.5px;
+    table-layout:fixed;
+  }
+  th,td{
+    border:1px solid var(--line);
+    padding:4px 5px;
+    height:26px;
+    text-align:center;
+    vertical-align:middle;
+    overflow:hidden;
+  }
+  thead th{
+    background:#f2f2f2;
+    font-weight:bold;
+  }
+  td[contenteditable]{ cursor:text; }
+  td[contenteditable]:focus{ outline:2px solid #0d6efd; outline-offset:-2px; }
+  .col-m{ width:8%; }
+  .col-name{ width:34%; text-align:right; }
+  td.col-name{ font-weight:bold; }
+  #customer{ font-weight:bold; font-size:16px; }
+  .col-unit{ width:12%; }
+  .col-qty{ width:12%; }
+  .col-price{ width:16%; }
+  .col-value{ width:18%; }
+
+  .num{ direction:ltr; }
+
+  tfoot td{
+    height:30px;
+    font-weight:bold;
+    background:#fafafa;
+  }
+  .foot-label{ text-align:right; padding-right:8px; }
+  .foot-total{ font-size:14px; }
+
+  input.plain{
+    flex:1;
+    width:100%;
+    border:0;
+    border-bottom:1px dotted #999;
+    font-family:inherit;
+    font-size:inherit;
+    background:transparent;
+    text-align:center;
+    outline:none;
+    padding:0 2px;
+  }
+  input.plain:focus{ border-bottom:1px solid #0d6efd; }
+
+  /* ===== Suggestions ===== */
+  .suggest{
+    position:fixed;
+    z-index:60;
+    background:#fff;
+    border:1px solid #999;
+    border-radius:6px;
+    box-shadow:0 6px 18px rgba(0,0,0,.22);
+    max-height:220px;
+    overflow:auto;
+    min-width:220px;
+    font-size:13.5px;
+    display:none;
+  }
+  .suggest .opt{
+    padding:6px 10px;
+    cursor:pointer;
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    white-space:nowrap;
+  }
+  .suggest .opt:hover,
+  .suggest .opt.active{ background:#e7f0ff; }
+  .suggest .opt .nm{ font-weight:bold; }
+  .suggest .opt .meta{ color:#666; direction:ltr; }
+
+  /* ===== Modal ===== */
+  .modal{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.5);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:120;
+  }
+  .modal.open{ display:flex; }
+  .modal-box{
+    background:#fff;
+    width:min(580px,92vw);
+    max-height:82vh;
+    border-radius:10px;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 12px 44px rgba(0,0,0,.35);
+  }
+  .modal-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:12px 16px;
+    background:#0d6efd;
+    color:#fff;
+    font-weight:bold;
+    font-size:15px;
+  }
+  .modal-head .x{
+    cursor:pointer;
+    background:transparent;
+    border:0;
+    color:#fff;
+    font-size:22px;
+    line-height:1;
+  }
+  .modal-body{ padding:14px 16px; overflow:auto; }
+  .modal-body input[type=text]{
+    width:100%;
+    padding:8px 10px;
+    margin-bottom:10px;
+    border:1px solid #ccc;
+    border-radius:6px;
+    font-family:inherit;
+    font-size:13.5px;
+  }
+  .item-form{
+    display:grid;
+    grid-template-columns:1fr auto auto;
+    gap:8px;
+    align-items:start;
+    padding-bottom:8px;
+    margin-bottom:8px;
+  }
+  .item-form input[type=text]{ margin-bottom:0; }
+  .item-form .btn{ height:36px; white-space:nowrap; }
+  .unit-row{
+    display:grid;
+    grid-template-columns:1fr 1fr auto;
+    gap:8px;
+    align-items:center;
+    margin-bottom:6px;
+  }
+  .unit-row input[type=text]{ margin-bottom:0; }
+  .u-chip{ display:inline-block; background:#eef4ff; border:1px solid #cfe0ff; color:#0d6efd;
+    border-radius:10px; padding:1px 8px; margin:2px 3px; font-size:12px; white-space:nowrap; }
+  .sortable{ cursor:pointer; user-select:none; white-space:nowrap; }
+  .sortable:hover{ background:#e7f0ff; }
+  .arrow{ color:#0d6efd; font-size:11px; }
+  .modal-body table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+    table-layout:auto;
+  }
+  .modal-body th,
+  .modal-body td{
+    border:1px solid #ddd;
+    height:auto;
+    padding:5px 8px;
+  }
+  .modal-body th{ background:#f2f2f2; }
+  .modal-actions{
+    padding:10px 16px;
+    border-top:1px solid #ddd;
+    display:flex;
+    gap:8px;
+  }
+  .btn{
+    font-family:inherit;
+    font-size:13px;
+    padding:6px 12px;
+    border:0;
+    border-radius:6px;
+    cursor:pointer;
+    background:#0d6efd;
+    color:#fff;
+  }
+  .btn.gray{ background:#6c757d; }
+  .btn.red{ background:#dc3545; }
+  .btn.mini{ padding:3px 9px; font-size:12px; }
+  .btn.icon{
+    width:30px;
+    height:30px;
+    padding:0;
+    border-radius:7px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    vertical-align:middle;
+  }
+  .btn.icon svg{ width:15px; height:15px; display:block; }
+  .empty-msg{ text-align:center; color:#888; padding:16px; }
+
+  #printArea{ display:none; }
+  #printArea h2{ text-align:center; font-size:20px; margin:0 0 14px; }
+  #printArea .sub{ text-align:center; color:#555; margin:0 0 14px; font-size:13px; }
+  #printArea table{ width:100%; border-collapse:collapse; font-size:13px; }
+  #printArea th,
+  #printArea td{ border:1px solid #000; padding:7px; text-align:center; }
+  #printArea thead th{ background:#f2f2f2; }
+  #printArea tfoot td{ font-weight:bold; }
+
+  @page{ size:A4; margin:10mm 8mm; }
+  @media print{
+    html,body{ background:#fff; }
+    .toolbar,.modal,.suggest,.page-del,.fab{ display:none !important; }
+    body.printing #pages{ display:none !important; }
+    body.printing #printArea{ display:block !important; }
+    .sheet{
+      width:auto;
+      min-height:auto;
+      margin:0;
+      padding:0;
+      box-shadow:none;
+      page-break-after:always;
+      break-after:page;
+    }
+    .sheet:last-child{
+      page-break-after:auto;
+      break-after:auto;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button title="طباعة / PDF" aria-label="طباعة / PDF" onclick="printCurrent()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+  </button>
+  <button title="حفظ الفاتورة" aria-label="حفظ الفاتورة" onclick="saveInvoice()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+  </button>
+  <button class="ghost" title="سجل الفواتير" aria-label="سجل الفواتير" onclick="openHistory()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><polyline points="12 7 12 12 15 15"/></svg>
+  </button>
+  <button class="ghost" title="قائمة الأصناف" aria-label="قائمة الأصناف" onclick="openItems()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 0 1 1-1h9z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+  </button>
+  <button class="ghost" title="قائمة العملاء" aria-label="قائمة العملاء" onclick="openCustomers()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  </button>
+  <button class="ghost" title="تفريغ" aria-label="تفريغ" onclick="resetForm()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+  </button>
+</div>
+
+<button class="fab" title="إضافة صفحة" aria-label="إضافة صفحة" onclick="addPage()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+</button>
+
+<div id="pages"></div>
+
+<div class="suggest" id="suggest"></div>
+
+<div class="modal" id="itemsModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span>قائمة الأصناف المحفوظة</span>
+      <button class="x" onclick="closeItems()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="item-form">
+        <input type="text" id="fName" placeholder="اسم الصنف" onkeydown="if(event.key==='Enter')submitItemForm()">
+        <button class="btn" id="saveBtn" onclick="submitItemForm()">إضافة</button>
+        <button class="btn gray" id="cancelBtn" onclick="cancelEdit()" style="display:none">إلغاء</button>
+      </div>
+      <div id="unitRows"></div>
+      <button class="btn gray" type="button" onclick="addUnitRow()" style="margin-bottom:12px">+ إضافة وحدة</button>
+      <input type="text" id="itemsSearch" placeholder="بحث باسم الصنف أو الوحدة..." oninput="renderItems()">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" onclick="setSort('name')">اسم الصنف <span class="arrow" id="s-name"></span></th>
+            <th>الوحدات والأسعار</th>
+            <th>إجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="itemsListBody"></tbody>
+      </table>
+      <div class="empty-msg" id="itemsEmpty" style="display:none">لا توجد أصناف محفوظة بعد</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeItems()">إغلاق</button>
+      <button class="btn red" onclick="clearItems()">حذف الكل</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="historyModal">
+  <div class="modal-box" style="width:min(760px,95vw)">
+    <div class="modal-head">
+      <span>سجل الفواتير</span>
+      <button class="x" onclick="closeHistory()">×</button>
+    </div>
+    <div class="modal-body">
+      <table>
+        <thead>
+          <tr>
+            <th>رقم الفاتورة</th>
+            <th>العميل</th>
+            <th>التاريخ</th>
+            <th>الإجمالي</th>
+            <th>آخر حفظ</th>
+            <th>إجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+      <div class="empty-msg" id="historyEmpty" style="display:none">لا توجد فواتير محفوظة بعد</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeHistory()">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="customersModal">
+  <div class="modal-box" style="width:min(720px,95vw)">
+    <div class="modal-head">
+      <span>قائمة العملاء</span>
+      <button class="x" onclick="closeCustomers()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="item-form" style="grid-template-columns:1fr auto">
+        <input type="text" id="custName" placeholder="اسم العميل" onkeydown="if(event.key==='Enter')addCustomerManual()">
+        <button class="btn" onclick="addCustomerManual()">إضافة</button>
+      </div>
+      <input type="text" id="custSearch" placeholder="بحث باسم العميل..." oninput="renderCustomers()">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" onclick="setCustSort('name')">اسم العميل <span class="arrow" id="cs-name"></span></th>
+            <th class="sortable" onclick="setCustSort('count')">عدد الفواتير <span class="arrow" id="cs-count"></span></th>
+            <th class="sortable" onclick="setCustSort('total')">الإجمالي <span class="arrow" id="cs-total"></span></th>
+            <th>إجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="customersBody"></tbody>
+      </table>
+      <div class="empty-msg" id="customersEmpty" style="display:none">لا يوجد عملاء بعد</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCustomers()">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="statementModal">
+  <div class="modal-box" style="width:min(720px,95vw)">
+    <div class="modal-head">
+      <span id="stmtTitle">كشف حساب</span>
+      <button class="x" onclick="closeStatement()">×</button>
+    </div>
+    <div class="modal-body">
+      <table>
+        <thead>
+          <tr>
+            <th>رقم الفاتورة</th>
+            <th>التاريخ</th>
+            <th>الإجمالي</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="statementBody"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" style="text-align:right;font-weight:bold">الإجمالي</td>
+            <td id="statementTotal" class="num" style="text-align:center;font-weight:bold">-</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="printStatement()">طباعة الكشف</button>
+      <button class="btn gray" onclick="closeStatement()">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="itemStmtModal">
+  <div class="modal-box" style="width:min(780px,95vw)">
+    <div class="modal-head">
+      <span id="itemStmtTitle">كشف الأصناف</span>
+      <button class="x" onclick="closeItemStatement()">×</button>
+    </div>
+    <div class="modal-body">
+      <table>
+        <thead>
+          <tr>
+            <th>رقم الفاتورة</th>
+            <th>التاريخ</th>
+            <th>العميل</th>
+            <th>العدد</th>
+            <th>السعر</th>
+            <th>القيمة</th>
+          </tr>
+        </thead>
+        <tbody id="itemStmtBody"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" style="text-align:right;font-weight:bold">الإجمالي</td>
+            <td id="itemStmtQty" class="num" style="text-align:center;font-weight:bold">-</td>
+            <td></td>
+            <td id="itemStmtTotal" class="num" style="text-align:center;font-weight:bold">-</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="empty-msg" id="itemStmtEmpty" style="display:none">لا توجد حركات لهذا الصنف</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="printItemStatement()">طباعة الكشف</button>
+      <button class="btn gray" onclick="closeItemStatement()">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+  const ROWS = 34;
+  const ITEMS_KEY = 'invoice_items_v1';
+  const HISTORY_KEY = 'invoice_history_v1';
+  const CUSTOMERS_KEY = 'invoice_customers_v1';
+  let currentId = null;
+
+  const ICON = {
+    add:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    edit:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+    del:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+    open:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+    stmt:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>',
+    print: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>'
+  };
+
+  function fmt(n){
+    if(!isFinite(n) || n === 0) return '0';
+    return n.toLocaleString('en-US', {maximumFractionDigits:2});
+  }
+
+  function parseNum(t){
+    if(!t) return 0;
+    const v = parseFloat(String(t).replace(/[^\d.\-]/g,''));
+    return isFinite(v) ? v : 0;
+  }
+
+  function makeRow(index){
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="col-value num">-</td>' +
+      '<td class="col-price num" contenteditable="true"></td>' +
+      '<td class="col-qty num" contenteditable="true"></td>' +
+      '<td class="col-unit" contenteditable="true"></td>' +
+      '<td class="col-name" contenteditable="true"></td>' +
+      '<td class="col-m num">'+index+'</td>';
+    return tr;
+  }
+
+  function recalcRow(tr){
+    const qty   = parseNum(tr.cells[2].textContent);
+    const price = parseNum(tr.cells[1].textContent);
+    const hasData = tr.cells[4].textContent.trim() ||
+                    tr.cells[2].textContent.trim() ||
+                    tr.cells[1].textContent.trim();
+    let value = qty * price;
+    tr.cells[0].textContent = hasData ? fmt(value) : '-';
+    tr.dataset.value = hasData ? value : 0;
+  }
+
+  function getBodies(){
+    return [...document.querySelectorAll('#pages .items-body')];
+  }
+  function getPages(){
+    return [...document.querySelectorAll('#pages .sheet')];
+  }
+  function buildBody(tbody, count){
+    tbody.innerHTML = '';
+    for(let i = 1; i <= count; i++) tbody.appendChild(makeRow(i));
+  }
+  function renumberAll(){
+    let n = 1;
+    getBodies().forEach(body => {
+      [...body.rows].forEach(tr => tr.cells[5].textContent = n++);
+    });
+  }
+
+  function recalcAll(){
+    let total = 0;
+    let any = false;
+    getBodies().forEach(body => {
+      [...body.rows].forEach(tr => {
+        recalcRow(tr);
+        const v = parseFloat(tr.dataset.value) || 0;
+        if(v){ total += v; any = true; }
+      });
+    });
+    const pgs = getPages();
+    pgs.forEach((pg, idx) => {
+      const last = idx === pgs.length - 1;
+      const t = pg.querySelector('.grand-total');
+      const label = pg.querySelector('.foot-label');
+      if(t) t.textContent = last ? (any ? fmt(total) : '-') : '';
+      if(label) label.textContent = last ? 'الإجمالي' : 'يتبع...';
+    });
+  }
+
+  function createPage(isFirst){
+    const sheet = document.createElement('div');
+    sheet.className = 'sheet page';
+
+    const head = document.createElement('div');
+    if(isFirst){
+      head.className = 'doc-head';
+      head.innerHTML =
+        '<div class="cell"><span class="lbl">التاريخ</span><input class="plain num" type="text" id="date"></div>' +
+        '<div class="cell"><span class="lbl">رقم الفاتورة</span><input class="plain num" type="text" id="invNo"></div>' +
+        '<div class="cell no-left"><span class="lbl">نوع الفاتورة</span><span class="fixed">عرض سعر</span></div>' +
+        '<div class="cell full"><span class="lbl">اسم العميل</span><input class="plain" type="text" id="customer"></div>';
+    } else {
+      head.className = 'doc-head page-head';
+      head.innerHTML =
+        '<div class="cell"><span class="lbl">الفاتورة</span><span class="ph-no">-</span></div>' +
+        '<div class="cell"><span class="lbl">التاريخ</span><span class="ph-date">-</span></div>' +
+        '<div class="cell no-left"><span class="lbl">العميل</span><span class="ph-cust">-</span></div>';
+
+      const del = document.createElement('button');
+      del.className = 'btn mini red page-del';
+      del.textContent = 'حذف الصفحة';
+      del.onclick = () => removePage(del);
+      sheet.appendChild(del);
+    }
+    sheet.appendChild(head);
+
+    const table = document.createElement('table');
+    table.className = 'items-table';
+    table.innerHTML =
+      '<thead><tr>' +
+        '<th class="col-value">القيمة</th>' +
+        '<th class="col-price">السعر</th>' +
+        '<th class="col-qty">العدد</th>' +
+        '<th class="col-unit">الوحدة</th>' +
+        '<th class="col-name">اسم الصنف</th>' +
+        '<th class="col-m">م</th>' +
+      '</tr></thead>' +
+      '<tbody class="items-body"></tbody>' +
+      '<tfoot><tr>' +
+        '<td class="foot-total num grand-total">-</td>' +
+        '<td class="foot-label" colspan="5">الإجمالي</td>' +
+      '</tr></tfoot>';
+    sheet.appendChild(table);
+    return sheet;
+  }
+
+  function buildFirstPage(){
+    const container = document.getElementById('pages');
+    container.innerHTML = '';
+    const pg = createPage(true);
+    container.appendChild(pg);
+    buildBody(pg.querySelector('.items-body'), ROWS);
+    return pg;
+  }
+
+  function addPage(){
+    const container = document.getElementById('pages');
+    const pg = createPage(false);
+    container.appendChild(pg);
+    buildBody(pg.querySelector('.items-body'), ROWS);
+    syncPageHeaders();
+    renumberAll();
+    recalcAll();
+    pg.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
+
+  function removePage(btn){
+    if(getPages().length <= 1) return;
+    if(!confirm('حذف هذه الصفحة وكل أصنافها؟')) return;
+    btn.closest('.sheet').remove();
+    renumberAll();
+    recalcAll();
+  }
+
+  function syncPageHeaders(){
+    const no   = (document.getElementById('invNo') || {}).value || '';
+    const date = (document.getElementById('date') || {}).value || '';
+    const cust = (document.getElementById('customer') || {}).value || '';
+    document.querySelectorAll('#pages .page-head .ph-no').forEach(el => el.textContent = no || '-');
+    document.querySelectorAll('#pages .page-head .ph-date').forEach(el => el.textContent = date || '-');
+    document.querySelectorAll('#pages .page-head .ph-cust').forEach(el => el.textContent = cust || '-');
+  }
+
+  function findEmptyRow(){
+    for(const body of getBodies()){
+      for(const tr of body.rows){
+        if(!tr.cells[4].textContent.trim()) return tr;
+      }
+    }
+    return null;
+  }
+
+  function resetForm(){
+    if(!confirm('هل تريد تفريغ جميع البيانات؟')) return;
+    currentId = null;
+    buildFirstPage();
+    initDate();
+    setNewInvoiceNo();
+    syncPageHeaders();
+    renumberAll();
+    recalcAll();
+  }
+
+  function initDate(){
+    const d = new Date();
+    const s = String(d.getDate()).padStart(2,'0') + '/' +
+              String(d.getMonth()+1).padStart(2,'0') + '/' +
+              String(d.getFullYear()).slice(2);
+    document.getElementById('date').value = s;
+  }
+
+  /* ============ Saved items list ============ */
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, c => (
+      {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+    ));
+  }
+
+  function loadItems(){
+    let raw;
+    try{ raw = JSON.parse(localStorage.getItem(ITEMS_KEY)) || []; }
+    catch(e){ return []; }
+    let changed = false;
+    const list = raw.map(it => {
+      if(Array.isArray(it.units)){
+        return { name:it.name, units:it.units.map(u => ({ unit:u.unit||'', price:String(u.price==null?'':u.price) })) };
+      }
+      changed = true;
+      return { name:it.name, units:[ { unit:it.unit||'', price:String(it.price==null?'':it.price) } ] };
+    });
+    if(changed) persistItems(list);
+    return list;
+  }
+  function persistItems(list){
+    try{ localStorage.setItem(ITEMS_KEY, JSON.stringify(list)); }catch(e){}
+  }
+  function findUnitPrice(name, unit){
+    const it = loadItems().find(x => x.name === name);
+    if(!it) return null;
+    const u = (it.units || []).find(x => x.unit === unit);
+    return u ? u.price : null;
+  }
+  function addUnitToItem(name, unit, price){
+    name = (name || '').trim();
+    if(!name) return;
+    const list = loadItems();
+    let it = list.find(x => x.name === name);
+    if(!it){ it = { name:name, units:[] }; list.push(it); }
+    unit = (unit || '').trim();
+    if(unit){
+      const p = String(price == null ? '' : price);
+      const j = it.units.findIndex(u => u.unit === unit);
+      if(j >= 0){ if(p !== '') it.units[j] = { unit:unit, price:p }; }
+      else it.units.push({ unit:unit, price:p });
+    }
+    persistItems(list);
+  }
+  function saveRow(tr){
+    const name = tr.cells[4].textContent.trim();
+    if(!name) return;
+    addUnitToItem(name, tr.cells[3].textContent.trim(), tr.cells[1].textContent.trim());
+  }
+  function deleteItem(name){
+    persistItems(loadItems().filter(it => it.name !== name));
+  }
+  function clearItems(){
+    if(!confirm('حذف جميع الأصناف المحفوظة؟')) return;
+    persistItems([]);
+    renderItems();
+  }
+
+  /* ============ Customers list ============ */
+  function loadCustomers(){
+    try{ return JSON.parse(localStorage.getItem(CUSTOMERS_KEY)) || []; }
+    catch(e){ return []; }
+  }
+  function saveCustomers(l){
+    try{ localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(l)); }catch(e){}
+  }
+  function addCustomer(name){
+    name = (name || '').trim();
+    if(!name) return;
+    const l = loadCustomers();
+    if(!l.includes(name)){ l.push(name); saveCustomers(l); }
+  }
+  function removeCustomer(name){
+    saveCustomers(loadCustomers().filter(c => c !== name));
+  }
+  function distinctUnits(){
+    const set = new Set();
+    loadItems().forEach(it => (it.units || []).forEach(u => { if(u.unit) set.add(u.unit); }));
+    return [...set];
+  }
+
+  /* ============ Items modal ============ */
+  let modalList = [];
+  let sortField = 'name';
+  let sortDir = 1;
+  let editingName = null;
+
+  function openItems(){
+    document.getElementById('itemsSearch').value = '';
+    cancelEdit();
+    renderItems();
+    document.getElementById('itemsModal').classList.add('open');
+    setTimeout(() => document.getElementById('itemsSearch').focus(), 30);
+  }
+  function closeItems(){
+    document.getElementById('itemsModal').classList.remove('open');
+  }
+  function setSort(field){
+    if(sortField === field) sortDir = -sortDir;
+    else { sortField = field; sortDir = 1; }
+    renderItems();
+  }
+  function unitsText(it){
+    const us = (it.units || []).filter(u => u.unit || u.price);
+    if(!us.length) return '<span style="color:#999">-</span>';
+    return us.map(u =>
+      '<span class="u-chip">' + esc(u.unit || '-') + (u.price !== '' && u.price != null ? ' : ' + esc(u.price) : '') + '</span>'
+    ).join('');
+  }
+  function renderItems(){
+    const q = (document.getElementById('itemsSearch').value || '').trim();
+    modalList = loadItems().filter(it =>
+      !q || it.name.includes(q) || (it.units || []).some(u => (u.unit || '').includes(q))
+    );
+    modalList.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ar') * sortDir);
+    document.getElementById('s-name').textContent = sortDir > 0 ? '▲' : '▼';
+    const body = document.getElementById('itemsListBody');
+    body.innerHTML = modalList.map((it, i) =>
+      '<tr>' +
+        '<td style="text-align:right;font-weight:bold">' + esc(it.name) + '</td>' +
+        '<td style="text-align:center">' + unitsText(it) + '</td>' +
+        '<td style="white-space:nowrap;text-align:center">' +
+          '<button class="btn icon" title="إضافة للفاتورة" data-act="add" data-i="' + i + '">' + ICON.add + '</button> ' +
+          '<button class="btn icon gray" title="تعديل" data-act="edit" data-i="' + i + '">' + ICON.edit + '</button> ' +
+          '<button class="btn icon gray" title="كشف الصنف" data-act="stmt" data-i="' + i + '">' + ICON.stmt + '</button> ' +
+          '<button class="btn icon red" title="حذف" data-act="del" data-i="' + i + '">' + ICON.del + '</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('');
+    document.getElementById('itemsEmpty').style.display = modalList.length ? 'none' : 'block';
+  }
+  function addUnitRow(unit, price){
+    const c = document.getElementById('unitRows');
+    const div = document.createElement('div');
+    div.className = 'unit-row';
+    div.innerHTML =
+      '<input type="text" class="uUnit" placeholder="الوحدة" value="' + esc(unit || '') + '" onkeydown="if(event.key===\'Enter\')submitItemForm()">' +
+      '<input type="text" class="uPrice num" placeholder="السعر" value="' + esc(price == null ? '' : String(price)) + '" onkeydown="if(event.key===\'Enter\')submitItemForm()">' +
+      '<button class="btn icon red" type="button" title="حذف الوحدة">' + ICON.del + '</button>';
+    div.querySelector('button').addEventListener('click', () => div.remove());
+    c.appendChild(div);
+  }
+  function submitItemForm(){
+    const name = document.getElementById('fName').value.trim();
+    if(!name){ alert('الرجاء إدخال اسم الصنف'); document.getElementById('fName').focus(); return; }
+    const units = [...document.querySelectorAll('#unitRows .unit-row')].map(r => ({
+      unit: r.querySelector('.uUnit').value.trim(),
+      price: r.querySelector('.uPrice').value.trim()
+    })).filter(u => u.unit || u.price);
+    let list = loadItems();
+    const skip = editingName !== null ? [editingName, name] : [name];
+    list = list.filter(it => !skip.includes(it.name));
+    list.push({ name:name, units:units });
+    persistItems(list);
+    cancelEdit();
+    renderItems();
+  }
+  function editItem(name){
+    const it = loadItems().find(x => x.name === name);
+    if(!it) return;
+    editingName = name;
+    document.getElementById('fName').value = it.name;
+    const c = document.getElementById('unitRows');
+    c.innerHTML = '';
+    const us = (it.units && it.units.length) ? it.units : [{ unit:'', price:'' }];
+    us.forEach(u => addUnitRow(u.unit, u.price));
+    document.getElementById('saveBtn').textContent = 'حفظ التعديل';
+    document.getElementById('cancelBtn').style.display = 'inline-block';
+    document.getElementById('fName').focus();
+  }
+  function cancelEdit(){
+    editingName = null;
+    document.getElementById('fName').value = '';
+    const c = document.getElementById('unitRows');
+    c.innerHTML = '';
+    addUnitRow();
+    document.getElementById('saveBtn').textContent = 'إضافة';
+    document.getElementById('cancelBtn').style.display = 'none';
+  }
+  function insertItemIntoInvoice(it){
+    let tr = findEmptyRow();
+    if(!tr){
+      addPage();
+      tr = findEmptyRow();
+    }
+    if(!tr) return;
+    const u = (it.units || [])[0] || {};
+    tr.cells[4].textContent = it.name;
+    tr.cells[3].textContent = u.unit || '';
+    tr.cells[1].textContent = (u.price == null ? '' : u.price);
+    recalcAll();
+    closeItems();
+  }
+  document.getElementById('itemsListBody').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if(!b) return;
+    const it = modalList[+b.dataset.i];
+    if(!it) return;
+    if(b.dataset.act === 'add') insertItemIntoInvoice(it);
+    else if(b.dataset.act === 'edit') editItem(it.name);
+    else if(b.dataset.act === 'stmt') openItemStatement(it.name);
+    else if(b.dataset.act === 'del'){ deleteItem(it.name); renderItems(); }
+  });
+
+  /* ============ Invoice history ============ */
+  let histList = [];
+
+  function loadHistory(){
+    try{ return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+    catch(e){ return []; }
+  }
+  function persistHistory(l){
+    try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(l)); }catch(e){}
+  }
+  function invoiceTotal(inv){
+    return (inv.items || []).reduce((s, it) =>
+      s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0);
+  }
+  function nextInvoiceNo(){
+    let max = 0;
+    loadHistory().forEach(inv => {
+      const m = /^inv-(\d+)$/.exec(inv.no || '');
+      if(m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return 'inv-' + String(max + 1).padStart(5, '0');
+  }
+  function setNewInvoiceNo(){
+    const el = document.getElementById('invNo');
+    if(el) el.value = nextInvoiceNo();
+  }
+  function collectInvoice(){
+    const items = [];
+    getBodies().forEach(body => {
+      [...body.rows].forEach(tr => {
+        const name  = tr.cells[4].textContent.trim();
+        const unit  = tr.cells[3].textContent.trim();
+        const qty   = tr.cells[2].textContent.trim();
+        const price = tr.cells[1].textContent.trim();
+        if(name || qty || price) items.push({ name:name, unit:unit, qty:qty, price:price });
+      });
+    });
+    return {
+      no: document.getElementById('invNo').value.trim(),
+      date: document.getElementById('date').value.trim(),
+      customer: document.getElementById('customer').value.trim(),
+      items: items
+    };
+  }
+  function saveInvoice(silent){
+    const inv = collectInvoice();
+    if(!inv.customer && inv.items.length === 0){
+      if(!silent) alert('لا توجد بيانات لحفظها');
+      return false;
+    }
+    const list = loadHistory();
+    if(currentId !== null && list.some(x => x.id === currentId)){
+      const i = list.findIndex(x => x.id === currentId);
+      list[i] = Object.assign({}, list[i], inv, { savedAt: Date.now() });
+    } else {
+      currentId = 'inv_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+      list.push(Object.assign({ id:currentId }, inv, { savedAt: Date.now() }));
+    }
+    persistHistory(list);
+    addCustomer(inv.customer);
+    inv.items.forEach(it => addUnitToItem(it.name, it.unit, it.price));
+    if(!silent) alert('تم حفظ الفاتورة في السجل');
+    return true;
+  }
+  function printCurrent(){
+    const inv = collectInvoice();
+    if(inv.customer || inv.items.length){
+      saveInvoice(true);
+    }
+    setTimeout(() => window.print(), 150);
+  }
+  function fillForm(inv){
+    const items = inv.items || [];
+    const pageCount = Math.max(1, Math.ceil(items.length / ROWS));
+    const container = document.getElementById('pages');
+    container.innerHTML = '';
+    for(let p = 0; p < pageCount; p++){
+      const pg = createPage(p === 0);
+      container.appendChild(pg);
+      buildBody(pg.querySelector('.items-body'), ROWS);
+    }
+    document.getElementById('invNo').value = inv.no || '';
+    document.getElementById('date').value = inv.date || '';
+    document.getElementById('customer').value = inv.customer || '';
+    const rows = getBodies().flatMap(body => [...body.rows]);
+    rows.forEach((tr, idx) => {
+      const it = items[idx];
+      tr.cells[4].textContent = it ? (it.name || '')  : '';
+      tr.cells[3].textContent = it ? (it.unit || '')  : '';
+      tr.cells[2].textContent = it ? (it.qty  || '')  : '';
+      tr.cells[1].textContent = it ? (it.price|| '')  : '';
+    });
+    syncPageHeaders();
+    renumberAll();
+    recalcAll();
+  }
+  function deleteInvoice(id){
+    persistHistory(loadHistory().filter(x => x.id !== id));
+    if(currentId === id) currentId = null;
+  }
+  function openHistory(){
+    renderHistory();
+    document.getElementById('historyModal').classList.add('open');
+  }
+  function closeHistory(){
+    document.getElementById('historyModal').classList.remove('open');
+  }
+  function renderHistory(){
+    histList = loadHistory().slice().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+    const body = document.getElementById('historyBody');
+    body.innerHTML = histList.map((inv, i) => {
+      const d = new Date(inv.savedAt || Date.now());
+      const when = d.toLocaleDateString('en-GB') + ' ' +
+                   d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+      return '<tr>' +
+        '<td class="num" style="text-align:center">' + esc(inv.no || '-') + '</td>' +
+        '<td style="text-align:right;font-weight:bold">' + esc(inv.customer || '-') + '</td>' +
+        '<td class="num" style="text-align:center">' + esc(inv.date || '-') + '</td>' +
+        '<td class="num" style="text-align:center">' + fmt(invoiceTotal(inv)) + '</td>' +
+        '<td class="num" style="text-align:center;color:#666;font-size:12px">' + when + '</td>' +
+        '<td style="white-space:nowrap;text-align:center">' +
+          '<button class="btn icon" title="تعديل" data-act="open" data-i="' + i + '">' + ICON.edit + '</button> ' +
+          '<button class="btn icon gray" title="طباعة" data-act="print" data-i="' + i + '">' + ICON.print + '</button> ' +
+          '<button class="btn icon red" title="حذف" data-act="del" data-i="' + i + '">' + ICON.del + '</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+    document.getElementById('historyEmpty').style.display = histList.length ? 'none' : 'block';
+  }
+  document.getElementById('historyBody').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if(!b) return;
+    const inv = histList[+b.dataset.i];
+    if(!inv) return;
+    if(b.dataset.act === 'open'){
+      fillForm(inv);
+      currentId = inv.id;
+      closeHistory();
+    } else if(b.dataset.act === 'print'){
+      fillForm(inv);
+      currentId = inv.id;
+      closeHistory();
+      setTimeout(() => window.print(), 200);
+    } else if(b.dataset.act === 'del'){
+      if(confirm('حذف هذه الفاتورة من السجل؟')){ deleteInvoice(inv.id); renderHistory(); }
+    }
+  });
+
+  /* ============ Customers & statements ============ */
+  let custList = [];
+  let stmtCustomer = null;
+  let stmtInvoices = [];
+  let custSortField = 'name';
+  let custSortDir = 1;
+
+  function customerStats(){
+    const map = new Map();
+    loadCustomers().forEach(c => map.set(c, { name:c, count:0, total:0 }));
+    loadHistory().forEach(inv => {
+      const c = (inv.customer || '').trim();
+      if(!c) return;
+      if(!map.has(c)) map.set(c, { name:c, count:0, total:0 });
+      const o = map.get(c);
+      o.count++;
+      o.total += invoiceTotal(inv);
+    });
+    return [...map.values()];
+  }
+  function openCustomers(){
+    document.getElementById('custName').value = '';
+    document.getElementById('custSearch').value = '';
+    renderCustomers();
+    document.getElementById('customersModal').classList.add('open');
+    setTimeout(() => document.getElementById('custName').focus(), 30);
+  }
+  function closeCustomers(){
+    document.getElementById('customersModal').classList.remove('open');
+  }
+  function setCustSort(field){
+    if(custSortField === field) custSortDir = -custSortDir;
+    else { custSortField = field; custSortDir = 1; }
+    renderCustomers();
+  }
+  function renderCustomers(){
+    const q = (document.getElementById('custSearch').value || '').trim();
+    custList = customerStats().filter(c => !q || c.name.includes(q));
+    custList.sort((a, b) => {
+      if(custSortField === 'name') return String(a.name).localeCompare(String(b.name), 'ar') * custSortDir;
+      return ((a[custSortField] || 0) - (b[custSortField] || 0)) * custSortDir;
+    });
+    ['name','count','total'].forEach(f => {
+      const el = document.getElementById('cs-' + f);
+      if(el) el.textContent = custSortField === f ? (custSortDir > 0 ? '▲' : '▼') : '';
+    });
+    const body = document.getElementById('customersBody');
+    body.innerHTML = custList.map((c, i) =>
+      '<tr>' +
+        '<td style="text-align:right;font-weight:bold">' + esc(c.name) + '</td>' +
+        '<td class="num" style="text-align:center">' + c.count + '</td>' +
+        '<td class="num" style="text-align:center">' + fmt(c.total) + '</td>' +
+        '<td style="white-space:nowrap;text-align:center">' +
+          '<button class="btn icon" title="كشف حساب" data-act="stmt" data-i="' + i + '">' + ICON.stmt + '</button> ' +
+          '<button class="btn icon red" title="حذف العميل" data-act="del" data-i="' + i + '">' + ICON.del + '</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('');
+    document.getElementById('customersEmpty').style.display = custList.length ? 'none' : 'block';
+  }
+  function addCustomerManual(){
+    const n = document.getElementById('custName').value.trim();
+    if(!n){ document.getElementById('custName').focus(); return; }
+    addCustomer(n);
+    document.getElementById('custName').value = '';
+    renderCustomers();
+  }
+  function openStatement(name){
+    stmtCustomer = name;
+    stmtInvoices = loadHistory()
+      .filter(inv => (inv.customer || '').trim() === name)
+      .sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
+    document.getElementById('stmtTitle').textContent = 'كشف حساب - ' + name;
+    const body = document.getElementById('statementBody');
+    body.innerHTML = stmtInvoices.map((inv, i) =>
+      '<tr>' +
+        '<td class="num" style="text-align:center">' + esc(inv.no || '-') + '</td>' +
+        '<td class="num" style="text-align:center">' + esc(inv.date || '-') + '</td>' +
+        '<td class="num" style="text-align:center">' + fmt(invoiceTotal(inv)) + '</td>' +
+        '<td style="text-align:center;white-space:nowrap">' +
+          '<button class="btn icon" title="تعديل" data-act="open" data-i="' + i + '">' + ICON.edit + '</button> ' +
+          '<button class="btn icon gray" title="طباعة" data-act="print" data-i="' + i + '">' + ICON.print + '</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('');
+    const total = stmtInvoices.reduce((s, inv) => s + invoiceTotal(inv), 0);
+    document.getElementById('statementTotal').textContent = stmtInvoices.length ? fmt(total) : '-';
+    closeCustomers();
+    document.getElementById('statementModal').classList.add('open');
+  }
+  function closeStatement(){
+    document.getElementById('statementModal').classList.remove('open');
+  }
+  function printStatement(){
+    const rows = stmtInvoices.map(inv =>
+      '<tr>' +
+        '<td>' + esc(inv.no || '-') + '</td>' +
+        '<td>' + esc(inv.date || '-') + '</td>' +
+        '<td>' + fmt(invoiceTotal(inv)) + '</td>' +
+      '</tr>'
+    ).join('');
+    const total = stmtInvoices.reduce((s, inv) => s + invoiceTotal(inv), 0);
+    const today = new Date().toLocaleDateString('en-GB');
+    const area = document.getElementById('printArea');
+    area.innerHTML =
+      '<h2>كشف حساب</h2>' +
+      '<div class="sub">العميل: ' + esc(stmtCustomer || '') + ' &nbsp;|&nbsp; التاريخ: ' + today + '</div>' +
+      '<table>' +
+        '<thead><tr><th>رقم الفاتورة</th><th>التاريخ</th><th>الإجمالي</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+        '<tfoot><tr><td colspan="2">الإجمالي</td><td>' + fmt(total) + '</td></tr></tfoot>' +
+      '</table>';
+    document.body.classList.add('printing');
+    setTimeout(() => window.print(), 100);
+  }
+  document.getElementById('customersBody').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if(!b) return;
+    const c = custList[+b.dataset.i];
+    if(!c) return;
+    if(b.dataset.act === 'stmt') openStatement(c.name);
+    else if(b.dataset.act === 'del'){
+      if(confirm('حذف العميل "' + c.name + '" من القائمة؟ (لن تُحذف فواتيره)')){ removeCustomer(c.name); renderCustomers(); }
+    }
+  });
+  document.getElementById('statementBody').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if(!b) return;
+    const inv = stmtInvoices[+b.dataset.i];
+    if(!inv) return;
+    if(b.dataset.act === 'open'){
+      fillForm(inv);
+      currentId = inv.id;
+      closeStatement();
+    } else if(b.dataset.act === 'print'){
+      fillForm(inv);
+      currentId = inv.id;
+      closeStatement();
+      setTimeout(() => window.print(), 200);
+    }
+  });
+  /* ============ Item statement ============ */
+  let itemStmtName = null;
+  let itemStmtRows = [];
+
+  function openItemStatement(name){
+    itemStmtName = name;
+    itemStmtRows = [];
+    loadHistory().forEach(inv => {
+      (inv.items || []).forEach(it => {
+        if((it.name || '').trim() === name){
+          const qty = parseFloat(it.qty) || 0;
+          const price = parseFloat(it.price) || 0;
+          itemStmtRows.push({
+            no: inv.no, date: inv.date, customer: inv.customer,
+            qty: it.qty, price: it.price, value: qty * price,
+            savedAt: inv.savedAt || 0
+          });
+        }
+      });
+    });
+    itemStmtRows.sort((a, b) => a.savedAt - b.savedAt);
+    document.getElementById('itemStmtTitle').textContent = 'كشف الأصناف - ' + name;
+    document.getElementById('itemStmtBody').innerHTML = itemStmtRows.map(r =>
+      '<tr>' +
+        '<td class="num" style="text-align:center">' + esc(r.no || '-') + '</td>' +
+        '<td class="num" style="text-align:center">' + esc(r.date || '-') + '</td>' +
+        '<td style="text-align:right">' + esc(r.customer || '-') + '</td>' +
+        '<td class="num" style="text-align:center">' + esc(r.qty || '') + '</td>' +
+        '<td class="num" style="text-align:center">' + esc(r.price || '') + '</td>' +
+        '<td class="num" style="text-align:center">' + fmt(r.value) + '</td>' +
+      '</tr>'
+    ).join('');
+    const tq = itemStmtRows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+    const tv = itemStmtRows.reduce((s, r) => s + r.value, 0);
+    document.getElementById('itemStmtQty').textContent = itemStmtRows.length ? fmt(tq) : '-';
+    document.getElementById('itemStmtTotal').textContent = itemStmtRows.length ? fmt(tv) : '-';
+    document.getElementById('itemStmtEmpty').style.display = itemStmtRows.length ? 'none' : 'block';
+    closeItems();
+    document.getElementById('itemStmtModal').classList.add('open');
+  }
+  function closeItemStatement(){
+    document.getElementById('itemStmtModal').classList.remove('open');
+  }
+  function printItemStatement(){
+    const rows = itemStmtRows.map(r =>
+      '<tr>' +
+        '<td>' + esc(r.no || '-') + '</td>' +
+        '<td>' + esc(r.date || '-') + '</td>' +
+        '<td>' + esc(r.customer || '-') + '</td>' +
+        '<td>' + esc(r.qty || '') + '</td>' +
+        '<td>' + esc(r.price || '') + '</td>' +
+        '<td>' + fmt(r.value) + '</td>' +
+      '</tr>'
+    ).join('');
+    const tq = itemStmtRows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+    const tv = itemStmtRows.reduce((s, r) => s + r.value, 0);
+    const today = new Date().toLocaleDateString('en-GB');
+    document.getElementById('printArea').innerHTML =
+      '<h2>كشف الأصناف</h2>' +
+      '<div class="sub">الصنف: ' + esc(itemStmtName || '') + ' &nbsp;|&nbsp; التاريخ: ' + today + '</div>' +
+      '<table>' +
+        '<thead><tr><th>رقم الفاتورة</th><th>التاريخ</th><th>العميل</th><th>العدد</th><th>السعر</th><th>القيمة</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+        '<tfoot><tr><td colspan="3">الإجمالي</td><td>' + fmt(tq) + '</td><td></td><td>' + fmt(tv) + '</td></tr></tfoot>' +
+      '</table>';
+    document.body.classList.add('printing');
+    setTimeout(() => window.print(), 100);
+  }
+
+  window.addEventListener('afterprint', () => document.body.classList.remove('printing'));
+
+  /* ============ Autocomplete (item / unit / customer) ============ */
+  const sugEl = document.getElementById('suggest');
+  let sugTarget = null;
+  let sugList = [];
+  let sugApply = null;
+
+  function hideSuggest(){
+    sugEl.style.display = 'none';
+    sugEl.innerHTML = '';
+    sugTarget = null;
+    sugList = [];
+    sugApply = null;
+  }
+  function renderSuggest(el, items, apply){
+    sugTarget = el;
+    sugList = items;
+    sugApply = apply;
+    if(!items.length){ hideSuggest(); return; }
+    sugEl.innerHTML = items.map((it, i) =>
+      '<div class="opt" data-i="' + i + '">' +
+        '<span class="nm">' + esc(it.label) + '</span>' +
+        (it.meta ? '<span class="meta">' + esc(it.meta) + '</span>' : '') +
+      '</div>'
+    ).join('');
+    const r = el.getBoundingClientRect();
+    sugEl.style.display = 'block';
+    sugEl.style.left = Math.max(4, r.left) + 'px';
+    sugEl.style.top = (r.bottom + 2) + 'px';
+    sugEl.style.minWidth = Math.max(200, r.width) + 'px';
+    const first = sugEl.querySelector('.opt');
+    if(first) first.classList.add('active');
+  }
+  function isSuggestField(el){
+    return el && el.matches && (
+      el.matches('.items-body td.col-name') ||
+      el.matches('.items-body td.col-unit') ||
+      el.id === 'customer'
+    );
+  }
+  function readField(el){
+    return (el.tagName === 'INPUT' ? el.value : el.textContent).trim();
+  }
+  function unitSuggestPool(el){
+    const tr = el.closest('tr');
+    const name = tr.cells[4].textContent.trim();
+    const saved = loadItems().find(x => x.name === name);
+    const pool = (saved && saved.units && saved.units.length)
+      ? saved.units.map(u => u.unit).filter(Boolean)
+      : distinctUnits();
+    return [...new Set(pool)];
+  }
+  function applyUnitSuggest(el, sug){
+    const tr = el.closest('tr');
+    const name = tr.cells[4].textContent.trim();
+    el.textContent = sug.label;
+    const p = findUnitPrice(name, sug.label);
+    if(p !== null) tr.cells[1].textContent = (p == null ? '' : p);
+    recalcAll();
+    saveRow(tr);
+  }
+  function showUnitSuggest(el, q){
+    const items = unitSuggestPool(el)
+      .filter(u => !q || u.includes(q))
+      .slice(0, 10)
+      .map(u => ({ label:u }));
+    renderSuggest(el, items, sug => applyUnitSuggest(el, sug));
+  }
+  function suggestionsFor(el){
+    const q = readField(el);
+    if(!q){ hideSuggest(); return; }
+
+    if(el.matches('.items-body td.col-name')){
+      const items = loadItems()
+        .filter(it => !q || it.name.includes(q))
+        .slice(0, 10)
+        .map(it => ({ label:it.name, meta:(it.units || []).map(u => u.unit).filter(Boolean).join(' ، ') }));
+      renderSuggest(el, items, sug => {
+        const tr = el.closest('tr');
+        tr.cells[4].textContent = sug.label;
+        recalcAll();
+        saveRow(tr);
+      });
+
+    } else if(el.matches('.items-body td.col-unit')){
+      showUnitSuggest(el, q);
+
+    } else if(el.id === 'customer'){
+      const items = loadCustomers()
+        .filter(c => !q || c.includes(q))
+        .slice(0, 10)
+        .map(c => ({ label:c }));
+      renderSuggest(el, items, it => { el.value = it.label; });
+    }
+  }
+  function commitSuggestion(i){
+    const it = sugList[i];
+    const fn = sugApply;
+    const target = sugTarget;
+    const wasName = target && target.matches && target.matches('.items-body td.col-name');
+    if(it && fn){ fn(it); }
+    hideSuggest();
+    if(target && target.matches && target.matches('.items-body td.col-name, .items-body td.col-unit')){
+      const next = enterSequenceNext(target);
+      if(next && isEditableCell(next)){
+        next.focus();
+        placeCaretEnd(next);
+        if(wasName) showUnitSuggest(next, '');
+      }
+    }
+  }
+
+  sugEl.addEventListener('mousedown', e => {
+    const opt = e.target.closest('.opt');
+    if(opt){ e.preventDefault(); commitSuggestion(+opt.dataset.i); }
+  });
+
+  document.addEventListener('focusin', e => {
+    if(!isSuggestField(e.target) && !e.target.closest('.suggest')) hideSuggest();
+  });
+  function fillPriceIfEmpty(tr){
+    const name = tr.cells[4].textContent.trim();
+    const unit = tr.cells[3].textContent.trim();
+    if(!name || !unit) return;
+    if(tr.cells[1].textContent.trim() !== '') return;
+    const p = findUnitPrice(name, unit);
+    if(p !== null && p !== ''){ tr.cells[1].textContent = p; recalcAll(); }
+  }
+  document.addEventListener('focusout', e => {
+    const el = e.target;
+    if(el.matches && el.matches('.items-body td.col-name, .items-body td.col-unit')){
+      fillPriceIfEmpty(el.closest('tr'));
+      saveRow(el.closest('tr'));
+    } else if(el.id === 'customer'){
+      addCustomer(el.value);
+    }
+  });
+
+  document.addEventListener('keydown', e => {
+    if(sugEl.style.display !== 'block') return;
+    const opts = [...sugEl.querySelectorAll('.opt')];
+    let idx = opts.findIndex(o => o.classList.contains('active'));
+    if(e.key === 'ArrowDown'){
+      e.preventDefault();
+      idx = (idx + 1) % opts.length;
+    } else if(e.key === 'ArrowUp'){
+      e.preventDefault();
+      idx = (idx - 1 + opts.length) % opts.length;
+    } else if(e.key === 'Enter'){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if(idx < 0 && opts.length) idx = 0;
+      if(idx >= 0) commitSuggestion(idx);
+      return;
+    } else if(e.key === 'Escape'){
+      hideSuggest();
+      return;
+    } else {
+      return;
+    }
+    opts.forEach(o => o.classList.remove('active'));
+    if(opts[idx]) opts[idx].classList.add('active');
+  });
+
+  window.addEventListener('scroll', hideSuggest, true);
+
+  /* ============ Keyboard navigation in the grid ============ */
+  function placeCaretEnd(el){
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  function isEditableCell(el){
+    return el && el.nodeType === 1 && el.tagName === 'TD' &&
+           el.getAttribute('contenteditable') === 'true';
+  }
+  const ENTER_SEQ = [4, 3, 2, 1];
+  function enterSequenceNext(td){
+    const tr = td.closest('tr');
+    if(!tr) return null;
+    const pos = ENTER_SEQ.indexOf(td.cellIndex);
+    if(pos >= 0 && pos < ENTER_SEQ.length - 1) return tr.cells[ENTER_SEQ[pos + 1]];
+    const rows = [...tr.parentElement.rows];
+    const r = rows.indexOf(tr) + 1;
+    if(r < rows.length) return rows[r].cells[ENTER_SEQ[0]];
+    return null;
+  }
+  document.addEventListener('keydown', e => {
+    const td = e.target;
+    if(!isEditableCell(td)) return;
+    if(sugEl.style.display === 'block') return;
+
+    const tr = td.closest('tr');
+    const body = tr.parentElement;
+    const col = td.cellIndex;
+    const goTo = el => { e.preventDefault(); el.focus(); placeCaretEnd(el); };
+
+    if(e.key === 'ArrowLeft' || e.key === 'ArrowRight'){
+      const dir = e.key === 'ArrowRight' ? -1 : 1;
+      for(let c = col + dir; c >= 0 && c < tr.cells.length; c += dir){
+        if(isEditableCell(tr.cells[c])){ goTo(tr.cells[c]); return; }
+      }
+      return;
+    }
+
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      const next = enterSequenceNext(td);
+      if(next && isEditableCell(next)) goTo(next);
+      return;
+    }
+
+    if(e.key === 'ArrowUp' || e.key === 'ArrowDown'){
+      e.preventDefault();
+      const dir = e.key === 'ArrowUp' ? -1 : 1;
+      const rows = [...body.rows];
+      for(let r = rows.indexOf(tr) + dir; r >= 0 && r < rows.length; r += dir){
+        const cand = rows[r].cells[col] ||
+                     [...rows[r].cells].find(isEditableCell);
+        if(isEditableCell(cand)){ goTo(cand); return; }
+      }
+      return;
+    }
+  });
+
+  document.addEventListener('input', e => {
+    if(e.target.closest('.items-body')) recalcAll();
+    if(e.target.id === 'invNo' || e.target.id === 'date' || e.target.id === 'customer'){
+      syncPageHeaders();
+    }
+    if(isSuggestField(e.target)) suggestionsFor(e.target);
+  });
+
+  buildFirstPage();
+  initDate();
+  setNewInvoiceNo();
+  syncPageHeaders();
+  renumberAll();
+  recalcAll();
+</script>
+</body>
+</html>
