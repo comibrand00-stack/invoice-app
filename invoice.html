@@ -610,7 +610,7 @@
   /* ============ Backend (Supabase) ============ */
   const SB_URL = 'https://ieiiawsjgkrsbblgjvcu.supabase.co';
   const SB_KEY = 'sb_publishable_JlgVW2kGa3wiS6C0PApt1A__clrP5sL';
-  const SB_TABLE = 'invoice_store';
+  const SB_TABLE = 'invoice_store'; // legacy KV (migration only)
   let sb = null, SB_READY = false;
   try{
     if(window.supabase && SB_URL && SB_KEY){
@@ -627,34 +627,54 @@
   }
   function writeLS(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 
-  const sbTimers = {};
-  function sbSave(key, value){
-    writeLS(key, value);
+  // Per-row writes => concurrent devices never overwrite each other's data.
+  function rowUpsert(table, row){
     if(!SB_READY) return;
-    clearTimeout(sbTimers[key]);
-    sbTimers[key] = setTimeout(async () => {
-      try{
-        const { error } = await sb.from(SB_TABLE).upsert(
-          { key: key, value: value, updated_at: new Date().toISOString() },
-          { onConflict: 'key' }
-        );
-        if(error) console.error('Supabase save error:', error.message);
-      }catch(e){ console.error(e); }
-    }, 300);
+    sb.from(table).upsert(row).then(({ error }) => { if(error) console.error(table + ' upsert:', error.message); });
+  }
+  function rowDelete(table, col, val){
+    if(!SB_READY) return;
+    sb.from(table).delete().eq(col, val).then(({ error }) => { if(error) console.error(table + ' delete:', error.message); });
+  }
+  function invoiceRow(v){
+    return {
+      id: v.id, no: v.no || null, date: v.date || null, customer: v.customer || null,
+      total: (v.items || []).reduce((s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0),
+      items: v.items || [], saved_at: v.savedAt || 0
+    };
   }
   async function sbLoad(){
     try{
-      const keys = [ITEMS_KEY, CUSTOMERS_KEY, HISTORY_KEY];
-      const { data, error } = await sb.from(SB_TABLE).select('key,value').in('key', keys);
-      if(error) throw error;
+      const [ri, rc, rv, rk] = await Promise.all([
+        sb.from('items').select('name,units'),
+        sb.from('customers').select('name'),
+        sb.from('invoices').select('id,no,date,customer,items,saved_at'),
+        sb.from(SB_TABLE).select('key,value')
+      ]);
+      if(ri.error) throw ri.error;
+      if(rc.error) throw rc.error;
+      if(rv.error) throw rv.error;
+      itemsCache     = (ri.data || []).map(r => ({ name:r.name, units:r.units || [] }));
+      customersCache = (rc.data || []).map(r => r.name);
+      historyCache   = (rv.data || []).map(r => ({ id:r.id, no:r.no, date:r.date, customer:r.customer, items:r.items || [], savedAt:r.saved_at || 0 }));
+      // migrate legacy KV blob to the new tables once
       const map = {};
-      (data || []).forEach(r => { map[r.key] = r.value; });
-      itemsCache     = map[ITEMS_KEY]     != null ? map[ITEMS_KEY]     : readLS(ITEMS_KEY, []);
-      customersCache = map[CUSTOMERS_KEY] != null ? map[CUSTOMERS_KEY] : readLS(CUSTOMERS_KEY, []);
-      historyCache   = map[HISTORY_KEY]   != null ? map[HISTORY_KEY]   : readLS(HISTORY_KEY, []);
-      if(map[ITEMS_KEY] == null && itemsCache.length) sbSave(ITEMS_KEY, itemsCache);
-      if(map[CUSTOMERS_KEY] == null && customersCache.length) sbSave(CUSTOMERS_KEY, customersCache);
-      if(map[HISTORY_KEY] == null && historyCache.length) sbSave(HISTORY_KEY, historyCache);
+      ((rk && rk.data) || []).forEach(r => { map[r.key] = r.value; });
+      if(!itemsCache.length && Array.isArray(map[ITEMS_KEY])){
+        itemsCache = map[ITEMS_KEY];
+        itemsCache.forEach(x => rowUpsert('items', { name:x.name, units:x.units || [] }));
+      }
+      if(!customersCache.length && Array.isArray(map[CUSTOMERS_KEY])){
+        customersCache = map[CUSTOMERS_KEY];
+        customersCache.forEach(n => rowUpsert('customers', { name:n }));
+      }
+      if(!historyCache.length && Array.isArray(map[HISTORY_KEY])){
+        historyCache = map[HISTORY_KEY];
+        historyCache.forEach(v => rowUpsert('invoices', invoiceRow(v)));
+      }
+      writeLS(ITEMS_KEY, itemsCache);
+      writeLS(CUSTOMERS_KEY, customersCache);
+      writeLS(HISTORY_KEY, historyCache);
     }catch(e){
       console.error('Supabase load failed, using local data:', e.message || e);
       itemsCache     = readLS(ITEMS_KEY, []);
@@ -872,10 +892,9 @@
       changed = true;
       return { name:it.name, units:[ { unit:it.unit||'', price:String(it.price==null?'':it.price) } ] };
     });
-    if(changed) persistItems(list);
+    if(changed){ itemsCache = list; writeLS(ITEMS_KEY, list); list.forEach(it => rowUpsert('items', { name:it.name, units:it.units })); }
     return list;
   }
-  function persistItems(list){ itemsCache = list; sbSave(ITEMS_KEY, list); }
   function findUnitPrice(name, unit){
     const it = loadItems().find(x => x.name === name);
     if(!it) return null;
@@ -895,7 +914,9 @@
       if(j >= 0){ if(p !== '') it.units[j] = { unit:unit, price:p }; }
       else it.units.push({ unit:unit, price:p });
     }
-    persistItems(list);
+    itemsCache = list;
+    writeLS(ITEMS_KEY, list);
+    rowUpsert('items', { name:it.name, units:it.units });
   }
   function saveRow(tr){
     const name = tr.cells[4].textContent.trim();
@@ -903,25 +924,33 @@
     addUnitToItem(name, tr.cells[3].textContent.trim(), tr.cells[1].textContent.trim());
   }
   function deleteItem(name){
-    persistItems(loadItems().filter(it => it.name !== name));
+    itemsCache = loadItems().filter(it => it.name !== name);
+    writeLS(ITEMS_KEY, itemsCache);
+    rowDelete('items', 'name', name);
   }
   function clearItems(){
     if(!confirm('حذف جميع الأصناف المحفوظة؟')) return;
-    persistItems([]);
+    itemsCache = [];
+    writeLS(ITEMS_KEY, []);
+    if(SB_READY) sb.from('items').delete().neq('name','').then(({ error }) => { if(error) console.error('items clear:', error.message); });
     renderItems();
   }
 
   /* ============ Customers list ============ */
   function loadCustomers(){ return customersCache || []; }
-  function saveCustomers(l){ customersCache = l; sbSave(CUSTOMERS_KEY, l); }
   function addCustomer(name){
     name = (name || '').trim();
     if(!name) return;
-    const l = loadCustomers();
-    if(!l.includes(name)){ l.push(name); saveCustomers(l); }
+    if(!loadCustomers().includes(name)){
+      customersCache = [...loadCustomers(), name];
+      writeLS(CUSTOMERS_KEY, customersCache);
+      rowUpsert('customers', { name:name });
+    }
   }
   function removeCustomer(name){
-    saveCustomers(loadCustomers().filter(c => c !== name));
+    customersCache = loadCustomers().filter(c => c !== name);
+    writeLS(CUSTOMERS_KEY, customersCache);
+    rowDelete('customers', 'name', name);
   }
   function distinctUnits(){
     const set = new Set();
@@ -997,11 +1026,13 @@
       unit: r.querySelector('.uUnit').value.trim(),
       price: r.querySelector('.uPrice').value.trim()
     })).filter(u => u.unit || u.price);
-    let list = loadItems();
-    const skip = editingName !== null ? [editingName, name] : [name];
-    list = list.filter(it => !skip.includes(it.name));
-    list.push({ name:name, units:units });
-    persistItems(list);
+    const rec = { name:name, units:units };
+    if(editingName !== null && editingName !== name) rowDelete('items', 'name', editingName);
+    const list = loadItems().filter(it => it.name !== name && it.name !== editingName);
+    list.push(rec);
+    itemsCache = list;
+    writeLS(ITEMS_KEY, list);
+    rowUpsert('items', rec);
     cancelEdit();
     renderItems();
   }
@@ -1056,7 +1087,6 @@
   let histList = [];
 
   function loadHistory(){ return historyCache || []; }
-  function persistHistory(l){ historyCache = l; sbSave(HISTORY_KEY, l); }
   function invoiceTotal(inv){
     return (inv.items || []).reduce((s, it) =>
       s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0);
@@ -1098,14 +1128,19 @@
       return false;
     }
     const list = loadHistory();
+    let rec;
     if(currentId !== null && list.some(x => x.id === currentId)){
       const i = list.findIndex(x => x.id === currentId);
       list[i] = Object.assign({}, list[i], inv, { savedAt: Date.now() });
+      rec = list[i];
     } else {
       currentId = 'inv_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-      list.push(Object.assign({ id:currentId }, inv, { savedAt: Date.now() }));
+      rec = Object.assign({ id:currentId }, inv, { savedAt: Date.now() });
+      list.push(rec);
     }
-    persistHistory(list);
+    historyCache = list;
+    writeLS(HISTORY_KEY, list);
+    rowUpsert('invoices', invoiceRow(rec));
     addCustomer(inv.customer);
     inv.items.forEach(it => addUnitToItem(it.name, it.unit, it.price));
     if(!silent) alert('تم حفظ الفاتورة في السجل');
@@ -1144,7 +1179,9 @@
     recalcAll();
   }
   function deleteInvoice(id){
-    persistHistory(loadHistory().filter(x => x.id !== id));
+    historyCache = loadHistory().filter(x => x.id !== id);
+    writeLS(HISTORY_KEY, historyCache);
+    rowDelete('invoices', 'id', id);
     if(currentId === id) currentId = null;
   }
   function openHistory(){
