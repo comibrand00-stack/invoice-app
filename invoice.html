@@ -800,21 +800,22 @@
   }
 
   function recalcAll(){
-    let total = 0;
-    let any = false;
-    getBodies().forEach(body => {
-      [...body.rows].forEach(tr => {
-        recalcRow(tr);
-        const v = parseFloat(tr.dataset.value) || 0;
-        if(v){ total += v; any = true; }
-      });
-    });
     const pgs = getPages();
+    let cumulative = 0;
+    let any = false;
     pgs.forEach((pg, idx) => {
+      const body = pg.querySelector('.items-body');
+      if(body){
+        [...body.rows].forEach(tr => {
+          recalcRow(tr);
+          const v = parseFloat(tr.dataset.value) || 0;
+          if(v){ cumulative += v; any = true; }
+        });
+      }
       const last = idx === pgs.length - 1;
       const t = pg.querySelector('.grand-total');
       const label = pg.querySelector('.foot-label');
-      if(t) t.textContent = last ? (any ? fmt(total) : '-') : '';
+      if(t) t.textContent = any ? fmt(cumulative) : '-';
       if(label) label.textContent = last ? 'الإجمالي' : 'يتبع...';
     });
   }
