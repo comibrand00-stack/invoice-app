@@ -370,6 +370,7 @@
   .login-box h1{ margin:0 0 4px; font-size:22px; }
   .login-box p{ margin:0 0 18px; color:#777; font-size:13px; }
   .login-box input{ width:100%; height:42px; border:1px solid #ccc; border-radius:8px; padding:0 12px; margin-bottom:10px; font-size:14px; font-family:inherit; direction:ltr; text-align:left; }
+  .login-box select{ width:100%; height:42px; border:1px solid #ccc; border-radius:8px; padding:0 12px; margin-bottom:10px; font-size:14px; font-family:inherit; background:#fff; }
   .login-box .btn{ width:100%; height:42px; }
   .login-err{ color:#d00; font-size:13px; margin-top:10px; min-height:18px; }
 </style>
@@ -397,6 +398,7 @@
     </svg>
     <h1>برنامج الفاتورة</h1>
     <p>سجّل الدخول للمتابعة</p>
+    <select id="projSel" onchange="onProjChange()"></select>
     <input type="email" id="loginEmail" placeholder="البريد الإلكتروني" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
     <input type="password" id="loginPass" placeholder="كلمة المرور" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn" id="loginBtn" onclick="doLogin()">دخول</button>
@@ -610,16 +612,39 @@
   let currentId = null;
 
   /* ============ Backend (Supabase) ============ */
-  const SB_URL = 'https://gjceckevgczmnysfjbzl.supabase.co';
-  const SB_KEY = 'sb_publishable_Nze0qOM8HkOG8ONHMWgx8g_E3erB1v4';
+  const PROJECTS = [
+    { id:'gjce', label:'الحساب الجديد', url:'https://gjceckevgczmnysfjbzl.supabase.co', key:'sb_publishable_Nze0qOM8HkOG8ONHMWgx8g_E3erB1v4' },
+    { id:'zrrn', label:'الحساب الآخر',  url:'https://zrrnhulkibklewbnsnkd.supabase.co', key:'sb_publishable_exYfxxN5jve2DpQNyoOjyw_ls1-Nv-w' }
+  ];
   const SB_TABLE = 'invoice_store'; // legacy KV (migration only)
-  let sb = null, SB_READY = false;
-  try{
-    if(window.supabase && SB_URL && SB_KEY){
-      sb = window.supabase.createClient(SB_URL, SB_KEY);
-      SB_READY = true;
-    }
-  }catch(e){ SB_READY = false; }
+  const PROJ_LS = 'invoice_proj_v1';
+  let sb = null, SB_READY = false, SB_URL = '', SB_KEY = '';
+  function currentProj(){
+    const id = localStorage.getItem(PROJ_LS);
+    return PROJECTS.find(p => p.id === id) || PROJECTS[0];
+  }
+  function initClient(){
+    const p = currentProj();
+    try{
+      if(window.supabase && p && p.url && p.key){
+        sb = window.supabase.createClient(p.url, p.key);
+        SB_URL = p.url; SB_KEY = p.key;
+        SB_READY = true;
+      } else { SB_READY = false; }
+    }catch(e){ SB_READY = false; }
+  }
+  initClient();
+  function fillProjSel(){
+    const sel = document.getElementById('projSel');
+    if(!sel) return;
+    sel.innerHTML = PROJECTS.map(p => '<option value="' + p.id + '">' + p.label + '</option>').join('');
+    sel.value = currentProj().id;
+  }
+  function onProjChange(){
+    const sel = document.getElementById('projSel');
+    localStorage.setItem(PROJ_LS, sel.value);
+    location.reload();
+  }
 
   let itemsCache = [], customersCache = [], historyCache = [];
 
@@ -1773,6 +1798,7 @@
     location.reload();
   }
   (async function(){
+    fillProjSel();
     if(!SB_READY){ startApp(); return; }
     try{
       const { data } = await sb.auth.getSession();
