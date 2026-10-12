@@ -975,11 +975,6 @@
     writeLS(ITEMS_KEY, list);
     rowUpsert('items', { name:it.name, units:it.units });
   }
-  function saveRow(tr){
-    const name = tr.cells[4].textContent.trim();
-    if(!name) return;
-    addUnitToItem(name, tr.cells[3].textContent.trim(), tr.cells[1].textContent.trim());
-  }
   function deleteItem(name){
     itemsCache = loadItems().filter(it => it.name !== name);
     writeLS(ITEMS_KEY, itemsCache);
@@ -1559,7 +1554,6 @@
     const p = findUnitPrice(name, sug.label);
     if(p !== null) tr.cells[1].textContent = (p == null ? '' : p);
     recalcAll();
-    saveRow(tr);
   }
   function showUnitSuggest(el, q){
     const items = unitSuggestPool(el)
@@ -1581,7 +1575,6 @@
         const tr = el.closest('tr');
         tr.cells[4].textContent = sug.label;
         recalcAll();
-        saveRow(tr);
       });
 
     } else if(el.matches('.items-body td.col-unit')){
@@ -1632,7 +1625,6 @@
     const el = e.target;
     if(el.matches && el.matches('.items-body td.col-name, .items-body td.col-unit')){
       fillPriceIfEmpty(el.closest('tr'));
-      saveRow(el.closest('tr'));
     } else if(el.id === 'customer'){
       addCustomer(el.value);
     }
