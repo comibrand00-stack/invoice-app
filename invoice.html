@@ -344,6 +344,7 @@
   #printArea tfoot td{ font-weight:bold; }
 
   @media (max-width: 820px){
+    #pages{ overflow-x:clip; }
     .toolbar{ gap:6px; padding:6px; flex-wrap:wrap; }
     .toolbar button{ width:40px; height:40px; }
     .toolbar button svg{ width:18px; height:18px; }
@@ -907,8 +908,7 @@
   function fitMobile(){
     const pages = document.getElementById('pages');
     if(!pages) return;
-    pages.style.transform = ''; pages.style.transformOrigin = '';
-    pages.style.width = ''; pages.style.marginLeft = ''; pages.style.marginRight = '';
+    pages.style.transform = '';
     pages.style.height = '';
     if(window.innerWidth > 820) return;
     const sheet = pages.querySelector('.sheet');
@@ -917,12 +917,8 @@
     const avail = window.innerWidth;
     if(!w || w <= avail) return;
     const s = avail / w;
-    const pull = ((1 - s) * w) / 2;
-    pages.style.width = w + 'px';
     pages.style.transformOrigin = 'top center';
     pages.style.transform = 'scale(' + s.toFixed(4) + ')';
-    pages.style.marginLeft = (-pull).toFixed(2) + 'px';
-    pages.style.marginRight = (-pull).toFixed(2) + 'px';
     pages.style.height = (pages.scrollHeight * s) + 'px';
   }
   let fitTimer = null;
