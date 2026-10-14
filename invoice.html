@@ -1059,7 +1059,7 @@
     renderItems();
   }
   function unitsText(it){
-    const us = (it.units || []).filter(u => u.unit !== '' || u.price !== '');
+    const us = (it.units || []).filter(u => u.unit || u.price);
     if(!us.length) return '<span style="color:#999">-</span>';
     return us.map(u =>
       '<span class="u-chip">' + esc(u.unit || '-') + (u.price !== '' && u.price != null ? ' : ' + esc(u.price) : '') + '</span>'
@@ -1104,8 +1104,8 @@
     const units = [...document.querySelectorAll('#unitRows .unit-row')].map(r => ({
       unit: r.querySelector('.uUnit').value.trim(),
       price: r.querySelector('.uPrice').value.trim()
-    })).filter(u => u.unit !== '' || u.price !== '');
-    const rec = { name:name, units:units.length ? units : [] };
+    })).filter(u => u.unit || u.price);
+    const rec = { name:name, units:units };
     if(editingName !== null && editingName !== name) rowDelete('items', 'name', editingName);
     const list = loadItems().filter(it => it.name !== name && it.name !== editingName);
     list.push(rec);
