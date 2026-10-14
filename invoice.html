@@ -611,6 +611,7 @@
   const ITEMS_KEY = 'invoice_items_v1';
   const HISTORY_KEY = 'invoice_history_v1';
   const CUSTOMERS_KEY = 'invoice_customers_v1';
+  const DRAFT_KEY = 'invoice_draft_v1';
   let currentId = null;
 
   /* ============ Backend (Supabase) ============ */
@@ -911,6 +912,7 @@
     syncPageHeaders();
     renumberAll();
     recalcAll();
+    scheduleDraft();
     pg.scrollIntoView({ behavior:'smooth', block:'start' });
   }
 
@@ -920,6 +922,7 @@
     btn.closest('.sheet').remove();
     renumberAll();
     recalcAll();
+    scheduleDraft();
   }
 
   function syncPageHeaders(){
@@ -946,6 +949,7 @@
     buildFirstPage();
     initDate();
     setNewInvoiceNo();
+    clearDraft();
     syncPageHeaders();
     renumberAll();
     recalcAll();
@@ -1240,6 +1244,23 @@
     if(!silent) alert('تم حفظ الفاتورة في السجل');
     return true;
   }
+  let draftTimer = null;
+  function saveDraft(){
+    try{
+      const inv = collectInvoice();
+      writeLS(DRAFT_KEY, { id: currentId, no: inv.no, date: inv.date, customer: inv.customer, items: inv.items });
+    }catch(e){}
+  }
+  function scheduleDraft(){ clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); }
+  function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
+  function restoreDraft(){
+    const d = readLS(DRAFT_KEY, null);
+    if(!d || (!d.customer && (!d.items || !d.items.length))) return false;
+    currentId = (d.id == null) ? null : d.id;
+    const rec = (currentId != null) ? loadHistory().find(x => x.id === currentId) : null;
+    fillForm({ no: rec ? rec.no : d.no, date:d.date, customer:d.customer, items:d.items || [] });
+    return true;
+  }
   function printCurrent(){
     const inv = collectInvoice();
     if(inv.customer || inv.items.length){
@@ -1271,13 +1292,14 @@
     syncPageHeaders();
     renumberAll();
     recalcAll();
+    saveDraft();
   }
   function deleteInvoice(id){
     const wasCurrent = (currentId === id);
     historyCache = loadHistory().filter(x => x.id !== id);
     writeLS(HISTORY_KEY, historyCache);
     rowDelete('invoices', 'id', id);
-    if(wasCurrent) currentId = null;
+    if(wasCurrent){ currentId = null; clearDraft(); }
     renumberInvoices();
     if(wasCurrent){ setNewInvoiceNo(); syncPageHeaders(); }
     else if(currentId !== null){
@@ -1794,8 +1816,12 @@
     if(e.target.id === 'invNo' || e.target.id === 'date' || e.target.id === 'customer'){
       syncPageHeaders();
     }
+    if(e.target.closest('.items-body') || e.target.id === 'invNo' || e.target.id === 'date' || e.target.id === 'customer'){
+      scheduleDraft();
+    }
     if(isSuggestField(e.target)) suggestionsFor(e.target);
   });
+  window.addEventListener('beforeunload', saveDraft);
 
   let appStarted = false;
   async function startApp(){
@@ -1810,10 +1836,12 @@
       customersCache = readLS(CUSTOMERS_KEY, []);
       historyCache   = readLS(HISTORY_KEY, []);
     }
-    buildFirstPage();
-    initDate();
     renumberInvoices();
-    setNewInvoiceNo();
+    if(!restoreDraft()){
+      buildFirstPage();
+      initDate();
+      setNewInvoiceNo();
+    }
     syncPageHeaders();
     renumberAll();
     recalcAll();
