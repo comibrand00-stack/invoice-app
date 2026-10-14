@@ -339,6 +339,19 @@
   }
   .btn.icon svg{ width:15px; height:15px; display:block; }
   .empty-msg{ text-align:center; color:#888; padding:16px; }
+  .history-summary{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    background:#f2f5fa;
+    border:1px solid #dde3ec;
+    border-radius:8px;
+    padding:10px 14px;
+    margin-bottom:10px;
+    font-size:14px;
+    color:#333;
+  }
+  .history-summary b{ color:#0d6efd; }
 
   #printArea{ display:none; }
   #printArea h2{ text-align:center; font-size:20px; margin:0 0 14px; }
@@ -493,6 +506,7 @@
       <button class="x" onclick="closeHistory()">×</button>
     </div>
     <div class="modal-body">
+      <div class="history-summary" id="historySummary"></div>
       <table>
         <thead>
           <tr>
@@ -1357,6 +1371,14 @@
       '</tr>';
     }).join('');
     document.getElementById('historyEmpty').style.display = histList.length ? 'none' : 'block';
+    const total = histList.reduce((s, inv) => s + invoiceTotal(inv), 0);
+    const sum = document.getElementById('historySummary');
+    if(sum){
+      sum.style.display = histList.length ? 'flex' : 'none';
+      sum.innerHTML =
+        '<span>عدد الفواتير: <b>' + histList.length + '</b></span>' +
+        '<span>مجموع القيمة: <b>' + fmt(total) + '</b></span>';
+    }
   }
   document.getElementById('historyBody').addEventListener('click', e => {
     const b = e.target.closest('button');
