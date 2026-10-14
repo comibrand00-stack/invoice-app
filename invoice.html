@@ -1182,6 +1182,15 @@
     });
     return 'inv-' + String(max + 1).padStart(5, '0');
   }
+  function renumberInvoices(){
+    const list = loadHistory().slice().sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
+    let changed = false;
+    list.forEach((inv, i) => {
+      const no = 'inv-' + String(i + 1).padStart(5, '0');
+      if(inv.no !== no){ inv.no = no; changed = true; rowUpsert('invoices', invoiceRow(inv)); }
+    });
+    if(changed){ historyCache = list; writeLS(HISTORY_KEY, list); }
+  }
   function setNewInvoiceNo(){
     const el = document.getElementById('invNo');
     if(el) el.value = nextInvoiceNo();
@@ -1264,10 +1273,17 @@
     recalcAll();
   }
   function deleteInvoice(id){
+    const wasCurrent = (currentId === id);
     historyCache = loadHistory().filter(x => x.id !== id);
     writeLS(HISTORY_KEY, historyCache);
     rowDelete('invoices', 'id', id);
-    if(currentId === id) currentId = null;
+    if(wasCurrent) currentId = null;
+    renumberInvoices();
+    if(wasCurrent){ setNewInvoiceNo(); syncPageHeaders(); }
+    else if(currentId !== null){
+      const cur = loadHistory().find(x => x.id === currentId);
+      if(cur){ const el = document.getElementById('invNo'); if(el) el.value = cur.no; syncPageHeaders(); }
+    }
   }
   function openHistory(){
     renderHistory();
@@ -1796,6 +1812,7 @@
     }
     buildFirstPage();
     initDate();
+    renumberInvoices();
     setNewInvoiceNo();
     syncPageHeaders();
     renumberAll();
