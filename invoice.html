@@ -1104,14 +1104,18 @@
     const units = [...document.querySelectorAll('#unitRows .unit-row')].map(r => ({
       unit: r.querySelector('.uUnit').value.trim(),
       price: r.querySelector('.uPrice').value.trim()
-    })).filter(u => u.unit || u.price);
+    })).filter(u => u.unit && u.price);
     const rec = { name:name, units:units };
     if(editingName !== null && editingName !== name) rowDelete('items', 'name', editingName);
     const list = loadItems().filter(it => it.name !== name && it.name !== editingName);
-    list.push(rec);
-    itemsCache = list;
-    writeLS(ITEMS_KEY, list);
-    rowUpsert('items', rec);
+    if(units.length || editingName !== null){
+      list.push(rec);
+      itemsCache = list;
+      writeLS(ITEMS_KEY, list);
+      rowUpsert('items', rec);
+    } else {
+      // do not save item without unit+price in catalog
+    }
     cancelEdit();
     renderItems();
   }
@@ -1221,7 +1225,9 @@
     writeLS(HISTORY_KEY, list);
     rowUpsert('invoices', invoiceRow(rec));
     addCustomer(inv.customer);
-    inv.items.forEach(it => addUnitToItem(it.name, it.unit, it.price));
+    inv.items.forEach(it => {
+      if(it.name && it.unit && it.price) if(name && it.unit && it.price) addUnitToItem(name, it.unit, it.price);
+    });
     if(!silent) alert('تم حفظ الفاتورة في السجل');
     return true;
   }
