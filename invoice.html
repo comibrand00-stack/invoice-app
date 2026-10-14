@@ -1226,7 +1226,7 @@
     rowUpsert('invoices', invoiceRow(rec));
     addCustomer(inv.customer);
     inv.items.forEach(it => {
-      if(it.name && it.unit && it.price) if(name && it.unit && it.price) addUnitToItem(name, it.unit, it.price);
+      if(it.name && it.unit && it.price) addUnitToItem(it.name, it.unit, it.price);
     });
     if(!silent) alert('تم حفظ الفاتورة في السجل');
     return true;
