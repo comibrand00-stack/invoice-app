@@ -913,6 +913,7 @@
     renumberAll();
     recalcAll();
     scheduleDraft();
+    scheduleAutoSave();
     pg.scrollIntoView({ behavior:'smooth', block:'start' });
   }
 
@@ -923,6 +924,7 @@
     renumberAll();
     recalcAll();
     scheduleDraft();
+    scheduleAutoSave();
   }
 
   function syncPageHeaders(){
@@ -1157,6 +1159,8 @@
     tr.cells[3].textContent = u.unit || '';
     tr.cells[1].textContent = (u.price == null ? '' : u.price);
     recalcAll();
+    scheduleDraft();
+    scheduleAutoSave();
     closeItems();
   }
   document.getElementById('itemsListBody').addEventListener('click', e => {
@@ -1227,7 +1231,7 @@
     let rec;
     if(currentId !== null && list.some(x => x.id === currentId)){
       const i = list.findIndex(x => x.id === currentId);
-      list[i] = Object.assign({}, list[i], inv, { savedAt: Date.now() });
+      list[i] = Object.assign({}, list[i], inv, { savedAt: list[i].savedAt || Date.now() });
       rec = list[i];
     } else {
       currentId = 'inv_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
@@ -1252,6 +1256,12 @@
     }catch(e){}
   }
   function scheduleDraft(){ clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); }
+  let autoSaveTimer = null;
+  function scheduleAutoSave(){
+    if(currentId === null) return;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => { if(currentId !== null) saveInvoice(true); }, 1200);
+  }
   function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
   function restoreDraft(){
     const d = readLS(DRAFT_KEY, null);
@@ -1818,6 +1828,7 @@
     }
     if(e.target.closest('.items-body') || e.target.id === 'invNo' || e.target.id === 'date' || e.target.id === 'customer'){
       scheduleDraft();
+      scheduleAutoSave();
     }
     if(isSuggestField(e.target)) suggestionsFor(e.target);
   });
