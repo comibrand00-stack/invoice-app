@@ -1818,7 +1818,18 @@
     if(e.key === 'Enter'){
       e.preventDefault();
       const next = enterSequenceNext(td);
-      if(next && isEditableCell(next)) goTo(next);
+      if(next && isEditableCell(next)){ goTo(next); return; }
+      const bodies = getBodies();
+      const bi = bodies.indexOf(body);
+      if(bi >= 0 && bi < bodies.length - 1){
+        const target = bodies[bi + 1].rows[0] && bodies[bi + 1].rows[0].cells[ENTER_SEQ[0]];
+        if(target && isEditableCell(target)){ goTo(target); return; }
+      }
+      addPage();
+      const newBodies = getBodies();
+      const nb = newBodies[newBodies.length - 1];
+      const target = nb && nb.rows[0] && nb.rows[0].cells[ENTER_SEQ[0]];
+      if(target && isEditableCell(target)) goTo(target);
       return;
     }
 
