@@ -1268,9 +1268,6 @@
     writeLS(HISTORY_KEY, list);
     rowUpsert('invoices', invoiceRow(rec));
     addCustomer(inv.customer);
-    inv.items.forEach(it => {
-      if(it.name && it.unit && it.price) addUnitToItem(it.name, it.unit, it.price);
-    });
     if(!silent) alert('تم حفظ الفاتورة في السجل');
     return true;
   }
